@@ -5,6 +5,6 @@
   "dependencies": {
   },
   "devDependencies": {
-    "awsbox": "*"
+    "awsbox": "0.0.10"
   }
 }
