@@ -1,0 +1,10 @@
+{
+  "name": "personatestuser",
+  "description": "A service that facilitates automated testing of sign-in with persona",
+  "version": "0.0.1",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "awsbox": "*"
+  }
+}
