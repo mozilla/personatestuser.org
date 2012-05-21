@@ -1,2 +1,10 @@
-*~
+/locale
+/server/config/*.json
+/server/var
+
 /node_modules
+npm-debug.log
+
+*~
+*.swp
+*.swo

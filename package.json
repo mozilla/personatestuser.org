@@ -2,15 +2,24 @@
   "name": "personatestuser",
   "description": "A service that facilitates automated testing of sign-in with persona",
   "version": "0.0.1",
+
   "dependencies": {
+    "express": "2.5.9",
+    "jade": ">0.0.1",
+    "mailparser": "0.2.26",
     "redis": "0.7.1",
     "smtp-protocol": "0.2.1",
-    "mailparser": "0.2.26"
+    "socket.io": "0.9.6"
   },
   "optionalDependencies": {
     "hiredis": "0.1.14"
   },
   "devDependencies": {
-    "awsbox": "0.0.10"
+    "awsbox": "0.0.10",
+    "vows": "0.6.2"
+  },
+  "scripts": {
+    "start": "server/bin/app",
+    "test": "vows test/*_vows.js --spec"
   }
 }
