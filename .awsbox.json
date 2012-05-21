@@ -1,3 +1,6 @@
 {
-  "processes": [ "server.js" ]
+  "processes": [
+    "server/bin/web"
+    "server/bin/email"
+  ]
 }
