@@ -1,6 +1,6 @@
 {
   "processes": [
-    "server/bin/web",
+    "server/bin/app",
     "server/bin/email"
   ]
 }
