@@ -18,7 +18,13 @@ module.exports = function API(config, onready) {
   redisClient.on('error', function(err) {
     console.log("Redis client error: " + err);
   });
+
+  // XXX i would like to have a select(db, onready), but i'm getting
+  // mysterious crashes from hiredis claiming that an error isn't 
+  // being handled.  
   onready(null);
+
+  console.log("ok now cull");
 
   this.getTestUser = function getTestUser(callback) {
     // pick a unique username and assign a random password.
@@ -86,6 +92,50 @@ module.exports = function API(config, onready) {
     }
   };
 
+  this.periodicallyCullUsers = function periodicallyCullUsers(interval) {
+    // by default, cull every minute
+    interval = interval || 60000; 
+
+    // make sure this only gets called once
+    if (this.cullingUsers === true) return;
+    this.cullingUsers = true;
+
+    function cullUsers() {
+      var now = (new Date()).getTime();
+      var one_hour_ago = now - (60 *60);
+
+      // find all users that were created over an hour ago.
+      redisClient.zrangebyscore('ptu:emails', '-inf', one_hour_ago, function(err, results) {
+        if (!err && results.length) {
+          var email;
+          var multi = redisClient.multi();
+
+          // for each of the users, delete the password record and remove
+          // it from the emails zset.
+          for (var i in results) {
+            email = results[i];
+            multi.del('ptu:'+email);
+            multi.zrem('ptu:emails', email);
+          }
+
+          multi.exec(function(err) {
+            if (err) {
+              console.log('error culling users: ' + err);
+            } 
+            // cull again in one minute
+            setTimeout(cullUsers, interval);
+          });
+        } else {
+          // cull again in one minute
+          setTimeout(cullUsers, interval); 
+        }
+      });
+    }
+
+    cullUsers();
+  };
+
+  this.periodicallyCullUsers();
   return this;
 };
 
