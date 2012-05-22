@@ -43,7 +43,7 @@ app.get('/test_user', function getTestUser(req, res) {
   });
 });
 
-app.get('/assertion/:email/:password/:audience', function getAssertion(req, res) {
+function getAssertion(params, req, res) {
   api.getAssertion(req.params, function(err, assertion) {
     if (err) {
       res.writeHead(500);
@@ -53,7 +53,15 @@ app.get('/assertion/:email/:password/:audience', function getAssertion(req, res)
     res.contentType('json');
     res.end(JSON.stringify(assertion));
   });
-})
+}
+
+app.get('/assertion/:email/:password/:audience', function getAssertion(req, res) {
+  getAssertion(req.params, req, res);
+});
+
+app.post('/assertion', function postGetAssertion(req, res) {
+  getAssertion(req.body, req, res);
+});
 
 if (!module.parent) {
   app.listen(3000, function(){
