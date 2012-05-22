@@ -131,6 +131,26 @@ span.value tt {
   box-shadow: inset 1px 1px rgba(0, 0, 0, 0.2);
 }
 
+/**
+ * disable selection on everything except the data fields
+ * it just feels cleaner that way
+ */
+
+* {
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: -moz-none;
+  -o-user-select: none;
+  user-select: none;
+}
+
+tt {
+  -webkit-user-select: text;
+  -khtml-user-select: text;
+  -moz-user-select: text;
+  -o-user-select: text;
+  user-select: text;
+}
 tt::selection {
   background: #f9d0d0;
 }
