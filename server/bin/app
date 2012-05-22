@@ -85,7 +85,8 @@ io.on('connection', function(socket) {
 });
 
 if (!module.parent) {
-  app.listen(3000, function(){
+  var port = parseInt(process.env['PORT'] || '3000', 10);
+  app.listen(port, function(){
     console.log("Express server listening on port %d in %s mode", app.address().port, app.settings.env);
   });
 }
