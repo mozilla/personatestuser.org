@@ -1,3 +1,12 @@
-h1 Persona test user
+p Generate your very own Persona test user
 
-p I like pie
+.create-user
+  form(action='/test_user')
+    input(type='submit')
+
+.create-assertion
+  form(action='/assertion', method='POST')
+    input(type='text', name='email')
+    input(type='text', name='password')
+    input(type='submit')
+

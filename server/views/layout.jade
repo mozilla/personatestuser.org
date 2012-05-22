@@ -1,7 +1,39 @@
-!!!
+!!!5
 html
   head
-    title persona test user
+    title Persona Test User
     link(rel='stylesheet', href='/css/main.css')
+    script(src='/js/head.min.js')
 
-  body!= body
+
+  body
+
+    a(href='http://github.com/lloyd/personatestuser.org', id='fork')
+      img(src='/i/github.png')
+
+
+    .container
+
+      #header 
+        h1 Persona Test User
+
+      #content
+
+        != body
+
+    script
+      head.js(
+        {jquery:        "/js/jquery.min.js"},
+        {noisy:         "/js/jquery.noisy.min.js"},
+        {underscore:    "/js/underscore-min.js"},
+        {backbone:      "/js/backbone-min.js"},
+        {socket_io:     "/socket.io/socket.io.js"},
+        {app:           "/js/client.js"}
+      );
+
+      head.ready(function() {
+        $('body').noisy();
+      });
+  
+  
+
