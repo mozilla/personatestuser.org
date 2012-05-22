@@ -20,6 +20,6 @@
   },
   "scripts": {
     "start": "server/bin/app",
-    "test": "vows test/*_vows.js --spec"
+    "test": "vows server/test/*_vows.js --spec"
   }
 }

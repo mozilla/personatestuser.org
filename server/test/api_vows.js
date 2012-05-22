@@ -1,6 +1,6 @@
 const vows = require("vows"),
       assert = require("assert"),
-      api = require("../server/lib/api"),
+      api = require("../lib/api"),
       redis = require('redis');
 
 vows.describe("API vows")
