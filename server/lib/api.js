@@ -6,6 +6,7 @@ const redis = require('redis'),
 
 module.exports = function API(config, onready) {
   config = config || require("../config/local.json");
+  onready = onready || function() {};
 
   // All our redis keys are prefixed with 'ptu:'
   //
@@ -13,7 +14,11 @@ module.exports = function API(config, onready) {
   // ptu:emails = zset of user emails scored by creation date
   // ptu:<email> = password for user with given email
   var redisClient = redis.createClient(config.port, config.host);
-  redisClient.select(config.db, onready);
+
+  redisClient.on('error', function(err) {
+    console.log("Redis client error: " + err);
+  });
+  onready(null);
 
   this.getTestUser = function getTestUser(callback) {
     // pick a unique username and assign a random password.
@@ -65,6 +70,14 @@ module.exports = function API(config, onready) {
         return callback(new Error("required param missing"));
       }
 
+      redisClient.get(email, function(err, storedPassword) {
+        if (password !== storedPassword) {
+          return callback(new Error("Password incorrect"));
+        }
+
+        // make an assertion for this audience.
+
+      });
       return callback(null, {
         'assertion': 'I like pie'
       });
@@ -145,7 +158,7 @@ var names = [
 var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
             'abcdefghijklmnopqrstuvwxyz' +
             '1234567890' +
-            '~#$%^&*(){}[]_+-=,.;: ';
+            '~#$%^&*(){}[]_+-=,.;:';
 
 var numNames = names.length;
 var numChars = chars.length;

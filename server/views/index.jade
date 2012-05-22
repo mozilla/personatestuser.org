@@ -1,12 +1,34 @@
-p Generate your very own Persona test user
+#email-template(style='display: none')
+  ul.info
+    li
+      span.key Username
+      span.value 
+        tt {{ email }}
+    li
+      span.key Password
+      span.value 
+        tt {{ password }}
+    li
+      span.key Expires
+      span.value {{ expiresDisplay }}
 
-.create-user
-  form(action='/test_user')
-    input(type='submit')
+  
+p Generate your very own Persona test user.  &lt;gleam!/&gt;
 
-.create-assertion
-  form(action='/assertion', method='POST')
-    input(type='text', name='email')
-    input(type='text', name='password')
-    input(type='submit')
+#create-user
+  a(class='function', href='/test_user', id='submit-create-user') Make me an Email!
 
+  .info
+    #create-user-info
+
+#create-assertion   
+  a(class='function', href='/assertion', id='submit-create-assertion') Get an Assertion!
+
+  .info
+    #create-assertion-info
+
+script 
+  head.ready(function() {
+    var model = new Application;
+    var view = new ApplicationView({model:model});
+  });

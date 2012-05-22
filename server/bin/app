@@ -2,10 +2,13 @@
 
 const express = require('express'),
       path = require('path'),
+      socket_io = require('socket.io'),
       API = require('../lib/api');
 
 var api = new API();
 var app = module.exports = express.createServer();
+var io = socket_io.listen(app);
+io.set('log level', 1);
 
 // Configuration
 
@@ -15,7 +18,7 @@ app.configure(function(){
   app.use(express.bodyParser());
   app.use(express.methodOverride());
   app.use(app.router);
-  app.use(express.static(path.join(__dirname, '..', 'static')));
+  app.use(express.static(path.join(__dirname, '..', '..', 'static')));
 });
 
 app.configure('development', function(){
@@ -62,6 +65,23 @@ app.get('/assertion/:email/:password/:audience', function getAssertion(req, res)
 
 app.post('/assertion', function postGetAssertion(req, res) {
   getAssertion(req.body, req, res);
+});
+
+// ----------------------------------------------------------------------
+// socket.io interface
+
+io.on('connection', function(socket) {
+  socket.on('message', function(data) {
+    if (data.method) {
+      if (data.method === 'getTestUser') {
+        api.getTestUser(function(err, user) {
+          socket.json.send({err: err, user: user});
+        });
+      } else {
+        console.error("Unsupported method: " + data.method);
+      }
+    }
+  });
 });
 
 if (!module.parent) {

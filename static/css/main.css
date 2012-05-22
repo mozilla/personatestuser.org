@@ -56,3 +56,122 @@ table {
  End of reset
  */
 
+body {
+  font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
+  font-size: 16px;
+  background-color: #ccc;
+  color: #000;
+}
+
+h1 {
+  font-size: 2em;
+  padding: 1em 0em;
+}
+
+#fork {
+  z-index: 2;
+  position: fixed;
+  top: 0;
+  right: 0;
+}
+
+#wrapper {
+  position: absolute;
+  width: 800px;
+  margin-left: 100px;
+  display: block;
+}
+
+#centered {
+  width: 600px;
+  display: block;
+  margin: 0 auto;
+  padding-top: 4em;
+}
+
+p {
+  line-height: 1.6em;
+}
+
+/* data display */
+
+ul.info {
+  padding: 6px 10px;
+  border-radius: .6em;
+  margin: 14px 0px;
+  background-color: #ddd;
+  font-size: 1.2em;
+}
+
+ul.info li {
+  padding: 4px 0px;
+}
+
+span.key {
+  display: inline-block;
+  min-width: 7em;
+  font-weight: bold;
+  border-right: 1em;
+}
+
+span.value {
+  display: inline-block;
+  min-width: 12em;
+  color: #565656;
+}
+
+span.value tt { 
+  color: #000;
+  font-family: "Courier New",Courier,monospace;
+  display: inline-block;
+  border: 1px solid #ccc;
+  background-color: #eee;
+  margin: 0;
+  padding: 3px 6px;
+  box-shadow: inset 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+tt::selection {
+  background: #f9d0d0;
+}
+tt::-moz-selection {
+  background: #f9d0d0;
+}
+
+
+/* fancy button vanity */
+
+a.function {
+  background-color: #549fdc;
+  color: #fff;
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+  min-width: 14em;
+  outline: none;
+  padding: 4px 6px;
+  font-size: 1.4em;
+  margin: 6px 0px;
+  -moz-border-radius: .6em;
+  -webkit-border-radius: .6em;
+  border-radius: .6em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+  -moz-text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+  -webkit-text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  background: -webkit-gradient(linear, left top, left bottom, from(#549fdc), to(#4384c4));
+  background: -moz-linear-gradient(top, #549fdc, #4384c4);
+}
+
+a.function:active {
+  position: relative;
+  top: 1px;     /* slight push down on click */
+  background: -webkit-gradient(linear, left top, left bottom, from(#4384c4), to(#549fdc));
+  background: -moz-linear-gradient(top, #4384c4, #549fdc);
+}
+
+a.function:hover {
+  background: #679ef1;
+  background: -webkit-gradient(linear, left top, left bottom, from(#679ef1), to(#538ad1));
+  background: -moz-linear-gradient(top, #679ef1, #538ad1);
+}

@@ -5,21 +5,19 @@ html
     link(rel='stylesheet', href='/css/main.css')
     script(src='/js/head.min.js')
 
-
   body
 
     a(href='http://github.com/lloyd/personatestuser.org', id='fork')
       img(src='/i/github.png')
 
+    #wrapper
+      #centered
 
-    .container
+        #header 
+          h1 Persona Test User
 
-      #header 
-        h1 Persona Test User
-
-      #content
-
-        != body
+        #content
+          != body
 
     script
       head.js(
@@ -28,7 +26,7 @@ html
         {underscore:    "/js/underscore-min.js"},
         {backbone:      "/js/backbone-min.js"},
         {socket_io:     "/socket.io/socket.io.js"},
-        {app:           "/js/client.js"}
+        {app:           "/js/main.js"}
       );
 
       head.ready(function() {
