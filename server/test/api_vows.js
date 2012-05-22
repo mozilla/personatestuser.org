@@ -1,16 +1,38 @@
 const vows = require("vows"),
       assert = require("assert"),
-      api = require("../lib/api"),
+      API = require("../lib/api"),
       redis = require('redis');
+
+var api = null;
+
+// XXX to-do: spin up a new redis instance for these tests
+// and point the config to it
+var config = {
+  redis_host: "127.0.0.1",
+  redis_port: 6379, 
+  redis_db: 0
+}
 
 vows.describe("API vows")
 
-// XXX spin up a test redis for this
+.addBatch({
+  "We have an api": {
+    topic: function() {
+      // api creation is asynchronous because we must wait for it
+      // to select the config redis_db
+      api = new API(config, this.callback); 
+    },
+
+    "and it is adorable": function(topic) {
+      assert(!! topic);
+    }
+  }
+})
 
 .addBatch({
   "getTestUser": {
     topic: function() {
-      api.getTestUser(this.callback);
+     api.getTestUser(this.callback);
     },
 
     "gives us a valid email and password": function(data) {

@@ -1,70 +1,79 @@
 const redis = require('redis'),
+      fs = require('fs'),
+      path = require('path'),
       DEFAULT_DOMAIN = 'personatestuser.org',
       TEN_MINUTES_IN_MS = 10 * 60 * 1000;
 
-// All our redis keys are prefixed with 'ptu:'
-//
-// ptu:nextval = an iterator
-// ptu:emails = zset of user emails scored by creation date
-// ptu:<email> = password for user with given email
-var redisClient = redis.createClient();
+module.exports = function API(config, onready) {
+  config = config || require("../config/local.json");
 
-module.exports.getTestUser = function getTestUser(callback) {
-  // pick a unique username and assign a random password.
-  try {
-    var name = getRandomName();
-    var password = getRandomPassword();
-    var email;
+  // All our redis keys are prefixed with 'ptu:'
+  //
+  // ptu:nextval = an iterator
+  // ptu:emails = zset of user emails scored by creation date
+  // ptu:<email> = password for user with given email
+  var redisClient = redis.createClient(config.port, config.host);
+  redisClient.select(config.db, onready);
 
-    redisClient.incr('ptu:nextval', function(err, val) {
-      email = name + val + '@' + DEFAULT_DOMAIN;
-      var created = (new Date()).getTime();
-      var expires = created + TEN_MINUTES_IN_MS;
+  this.getTestUser = function getTestUser(callback) {
+    // pick a unique username and assign a random password.
+    try {
+      var name = getRandomName();
+      var password = getRandomPassword();
+      var email;
 
-      var multi = redisClient.multi();
-      multi.zadd('ptu:emails', expires, email);
-      multi.set('ptu:'+email, password);
-      multi.exec(function(err) {
-        if (err) return callback(err);
-        return callback(null, {
-          'email': email, 
-          'password': password,
-          'expires': expires
+      redisClient.incr('ptu:nextval', function(err, val) {
+        email = name + val + '@' + DEFAULT_DOMAIN;
+        var created = (new Date()).getTime();
+        var expires = created + TEN_MINUTES_IN_MS;
+
+        var multi = redisClient.multi();
+        multi.zadd('ptu:emails', expires, email);
+        multi.set('ptu:'+email, password);
+        multi.exec(function(err) {
+          if (err) return callback(err);
+          return callback(null, {
+            'email': email, 
+            'password': password,
+            'expires': expires
+          });
         });
       });
-    });
 
-  } catch (err) {
-    return callback(err);
-  }
-};
-
-module.exports.deleteTestUser = function deleteTestUser(email, callback) {
-  try {
-    var multi = redisClient.multi();
-    multi.del('ptu:'+email);
-    multi.zrem('ptu:emails', email);
-    multi.exec(callback);
-  } catch (err) {
-    return callback(err);
-  }
-};
-
-module.exports.getAssertion = function getAssertion(params, callback) {
-  try{
-    var email = params.email;
-    var password = params.password;
-    var audience = params.audience;
-    if (! email && password && audience) {
-      return callback(new Error("required param missing"));
+    } catch (err) {
+      return callback(err);
     }
+  };
 
-    return callback(null, {
-      'assertion': 'I like pie'
-    });
-  } catch (err) {
-    return callback(err);
-  }
+  this.deleteTestUser = function deleteTestUser(email, callback) {
+    try {
+      var multi = redisClient.multi();
+      multi.del('ptu:'+email);
+      multi.zrem('ptu:emails', email);
+      multi.exec(callback);
+    } catch (err) {
+      return callback(err);
+    }
+  };
+
+  this.getAssertion = function getAssertion(params, callback) {
+    try{
+      var email = params.email;
+      var password = params.password;
+      var audience = params.audience;
+      if (! email && password && audience) {
+        return callback(new Error("required param missing"));
+      }
+
+      return callback(null, {
+        'assertion': 'I like pie'
+      });
+    } catch (err) {
+      return callback(err);
+    }
+  };
+
+  return this;
 };
 
 // ----------------------------------------------------------------------

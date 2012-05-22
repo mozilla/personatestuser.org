@@ -2,8 +2,9 @@
 
 const express = require('express'),
       path = require('path'),
-      api = require('../lib/api');
+      API = require('../lib/api');
 
+var api = new API();
 var app = module.exports = express.createServer();
 
 // Configuration
