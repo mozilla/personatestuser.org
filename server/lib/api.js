@@ -5,7 +5,12 @@ const redis = require('redis'),
       TEN_MINUTES_IN_MS = 10 * 60 * 1000;
 
 module.exports = function API(config, onready) {
-  config = config || require("../config/local.json");
+  // get default config from env
+  config = config || {  
+    redis_host: process.env["REDIS_HOST"] || "127.0.0.1", 
+    redis_port: parseInt(process.env["REDIS_PORT"] || "6379", 10)
+  };
+
   onready = onready || function() {};
 
   // All our redis keys are prefixed with 'ptu:'
@@ -13,7 +18,7 @@ module.exports = function API(config, onready) {
   // ptu:nextval = an iterator
   // ptu:emails = zset of user emails scored by creation date
   // ptu:<email> = password for user with given email
-  var redisClient = redis.createClient(config.port, config.host);
+  var redisClient = redis.createClient(config.redis_port, config.redis_host);
 
   redisClient.on('error', function(err) {
     console.log("Redis client error: " + err);
@@ -23,8 +28,6 @@ module.exports = function API(config, onready) {
   // mysterious crashes from hiredis claiming that an error isn't 
   // being handled.  
   onready(null);
-
-  console.log("ok now cull");
 
   this.getTestUser = function getTestUser(callback) {
     // pick a unique username and assign a random password.
