@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 const express = require('express'),
-      path = require('path');
+      path = require('path'),
+      api = require('../lib/api');
 
 var app = module.exports = express.createServer();
 
@@ -29,6 +30,30 @@ app.configure('production', function(){
 app.get('/', function(req, res) {
   res.render('index');
 });
+
+app.get('/test_user', function getTestUser(req, res) {
+  api.getTestUser(function(err, user) {
+    if (err) {
+      res.writeHead(500);
+      return res.end();
+    }
+
+    res.contentType('json');
+    res.end(JSON.stringify(user));
+  });
+});
+
+app.get('/assertion/:email/:password/:audience', function getAssertion(req, res) {
+  api.getAssertion(req.params, function(err, assertion) {
+    if (err) {
+      res.writeHead(500);
+      return res.end();
+    }
+
+    res.contentType('json');
+    res.end(JSON.stringify(assertion));
+  });
+})
 
 if (!module.parent) {
   app.listen(3000, function(){
