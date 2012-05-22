@@ -33,8 +33,31 @@ vows.describe("API vows")
         assert(err === null);
         assert(redisResults[0] >= 0);
         assert(redisResults[1] === initialData.password);
+      },
+
+      "which we can delete": {
+        topic: function(data) {
+          var cb = this.callback;
+          api.deleteTestUser(data.email, function(err) {
+            if (err) return cb(err);
+            var multi = redis.createClient().multi();
+            multi.zrank('ptu:emails', data.email);
+            multi.get('ptu:'+data.email);
+            multi.exec(function(err, results) {
+              return cb(err, data, results);
+            });
+          });
+        },
+
+        "from redis": function(err, initialData, redisResults) {
+          assert(err === null);
+          assert(redisResults[0] === null);
+          assert(redisResults[1] === null);
+        }
+
       }
     },
+
   }
 })
 
