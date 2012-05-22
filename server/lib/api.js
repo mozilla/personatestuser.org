@@ -2,7 +2,7 @@ const redis = require('redis'),
       fs = require('fs'),
       path = require('path'),
       DEFAULT_DOMAIN = 'personatestuser.org',
-      TEN_MINUTES_IN_MS = 10 * 60 * 1000;
+      ONE_HOUR_IN_MS = 60 * 60 * 1000;
 
 module.exports = function API(config, onready) {
   // get default config from env
@@ -39,7 +39,7 @@ module.exports = function API(config, onready) {
       redisClient.incr('ptu:nextval', function(err, val) {
         email = name + val + '@' + DEFAULT_DOMAIN;
         var created = (new Date()).getTime();
-        var expires = created + TEN_MINUTES_IN_MS;
+        var expires = created + ONE_HOUR_IN_MS;
 
         var multi = redisClient.multi();
         multi.zadd('ptu:emails', expires, email);
