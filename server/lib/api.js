@@ -1,5 +1,6 @@
 const redis = require('redis'),
-      DEFAULT_DOMAIN = 'personatestuser.org';
+      DEFAULT_DOMAIN = 'personatestuser.org',
+      TEN_MINUTES_IN_MS = 10 * 60 * 1000;
 
 // All our redis keys are prefixed with 'ptu:'
 //
@@ -17,15 +18,18 @@ module.exports.getTestUser = function getTestUser(callback) {
 
     redisClient.incr('ptu:nextval', function(err, val) {
       email = name + val + '@' + DEFAULT_DOMAIN;
+      var created = (new Date()).getTime();
+      var expires = created + TEN_MINUTES_IN_MS;
 
       var multi = redisClient.multi();
-      multi.zadd('ptu:emails', (new Date()).getTime(), email);
+      multi.zadd('ptu:emails', expires, email);
       multi.set('ptu:'+email, password);
       multi.exec(function(err) {
         if (err) return callback(err);
         return callback(null, {
           'email': email, 
-          'password': password
+          'password': password,
+          'expires': expires
         });
       });
     });
