@@ -31,8 +31,17 @@ var server = smtp.createServer('restmail.net', function (req) {
     stream.pipe(mailparser);
 
     mailparser.on('end', function(mail) {
-      var user = req.to.split('@')[0];
-      console.log("OMG OMG LOL.  I JUST GOT AN EMAIL! For:", user);
+      // Hopefully this is an email for us to finish registration.
+      // If it is, push it on a queue where the api verifier will find it.
+      var match = res.body.match(/https:\/\/\S+?verify_email_address\?token=(\S+)/);
+      if (match) {
+        db.rpush('ptu:mailq', JSON.stringify({
+          email: req.to,
+          token: match[1]
+        }));
+      } else {
+        // meh.
+      }
     });
 
     ack.accept(354, 'OK');

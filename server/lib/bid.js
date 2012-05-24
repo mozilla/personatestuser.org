@@ -1,11 +1,94 @@
 
-const wsapi = require('./wsapi_client');
+const util = require('util'),
+      events = require('events'),
+      redis = require('redis'),
+      wsapi = require('./wsapi_client');
 
 var service = 'https://diresworb.org'
 var config = {
   browserid: service,
   verifier: service + "/verify"
 };
+
+/**
+ * The Verifier sits and waits for asynchronous verification emails
+ * to show up in redis, where the mail daemon will push them on 
+ * arrival.  
+ *
+ * When an email arrives, the verifier checks that it matches a user
+ * we are currently staging.  If it does, it sends a complete_user_creation.
+ * If that returns a 200, it emits a happy signal.
+ *
+ * The api will catch the happy signal inside the create user sequence.
+ */
+var Verifier = function Verifier(config) {
+  events.EventEmitter.call(this);
+  var self = this;
+  self.config = config;
+  self.redisClient = redis.createClient();
+
+  this._getEmailPassword = function getEmailPassword(email, callback) {
+    self.redisClient.get('ptu:'+email, function(err, pass) {
+      console.log("password for " + email);
+      return callback(err, pass);
+    });
+  };
+
+  this.verifyNextEmail = function verifyNextEmail() {
+    console.log("blpop ...");
+    self.redisClient.blpop('ptu:mailq', 0, function(err, data) {
+      // data is a tuple like [qname, data]
+      try {
+        data = JSON.parse(data[1]);
+      } catch (err) {
+        // bogus email
+        self.verifyNextEmail();
+        return;
+      }
+
+      if (data.email && data.token) {
+
+        // Get the user's password.  This will verify that 
+        // we are staging this user
+        self._getEmailPassword(data.email, function(err, pass) {
+          if (!err && pass) {
+            // Complete the user creation with browserid
+            wsapi.post(self.config, '/wsapi/complete_user_creation', {}, { 
+              token: data.token,
+              pass: pass
+            }, function(err, res) {
+              if (res.code !== 200) {
+                err = new Error("Server returned " + res.code);
+              }
+              if (err) {
+                self.emit('error', "Can't complete user creation: " + err);
+              } else {
+                // The smell of success.
+                //
+                // No errors.  Whew!  If we are here, we have retrieved a
+                // user email and token from the mail queue, fetched the 
+                // corresponding password, and successfully completed the 
+                // creation of that user with browserid.  
+                self.emit('user-created', data.email);
+                self.verifyNextEmail();
+              }
+            });
+          } else {
+            // no password - user staging may have timed out
+            console.log("Received a verification email for a user we're not staging");
+            self.verifyNextEmail();
+          }
+        });
+      } else {
+        console.log("Got some weird data from the q: " + JSON.stringify(data));
+        self.verifyNextEmail();
+      }
+    });
+  };
+
+  return this;
+}
+util.inherits(Verifier, events.EventEmitter);
 
 var getSessionContext = function getSessionContext(config, context, callback) {
   // Get a session_context 
@@ -68,33 +151,53 @@ var stageUser = function stageUser(config, context, callback) {
   }, function(err, res) {
     if (err) return callback(err);
 
+    if (res.code === 429) {
+      // too many requests!
+      return callback(new Error("Can't stage user: we're flooding the server"));
+    }
+
     if (res.code !== 200) {
       return callback(new Error("Can't stage user: server status " + res.code));
     }
 
-    return callback(null, res);
+
+    /*
+      Thanks for verifying your email address. This message is being sent to
+    you to complete your sign-in to http://localhost.
+
+      Finish registration by clicking this link:
+    https://diresworb.org/verify_email_address?token=7B4fNtCXd2zgDeJRRHp8ClZSMDxxr8FJPO17UGRlf5dozozp
+
+      If you are NOT trying to sign into this site, just ignore this email.
+
+      Thanks,
+      BrowserID
+      (A better way to sign in)
+      */
+    return callback(null);
   });
 }
 
 var createUser = function createUser(config, email, pass, callback) {
   var context = {keys: {}}
 
-  getSessionContext(config, context, function(err, res) {
+  getSessionContext(config, context, function(err) {
     if (err) return callback(err);
 
-    getAddressInfo(config, context, function(err, res) {
+    getAddressInfo(config, context, function(err) {
       if (err) return callback(err);
 
-      stageUser(config, context, function(err, res) {
+      stageUser(config, context, function(err, url) {
         if (err) return callback(err);
 
-        // that should be a 200
-        // now expect an email within 5 seconds
+        // Now we wait for an email to return from browserid.
+        // The email will be received by bin/email, which will
+        // push the email address and token pair into a redis
+        // queue.  
+        return callback(null);
       });
     });
   });
-
-
 }
 
 // the individual api calls
@@ -104,3 +207,7 @@ module.exports.stageUser = stageUser;
 
 // higher-level compositions
 module.exports.createUser = createUser;
+module.exports.Verifier = Verifier;
+
+var v = new Verifier()
+v.verifyNextEmail()

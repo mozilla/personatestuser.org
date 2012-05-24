@@ -20,7 +20,7 @@ vows.describe("BID API vows")
         pass: pass,
         site: 'http://localhost'
       }
-      bid.getSessionContext(config, context, function(err, res) {
+      bid.getSessionContext(config, context, function(err) {
         cb(err, context);
       });
     },
@@ -35,7 +35,7 @@ vows.describe("BID API vows")
     "and address_info": {
       topic: function(context) {
         var cb = this.callback;
-        bid.getAddressInfo(config, context, function(err, res) {
+        bid.getAddressInfo(config, context, function(err) {
           cb(err, context);
         });
       },
@@ -46,16 +46,15 @@ vows.describe("BID API vows")
       },
 
       "and stage_user": {
-        topic: function(res, context) {
+        topic: function(context) {
           var cb = this.callback;
-          bid.stageUser(config, context, function(err, res) {
-            cb(err, res, context);
+          bid.stageUser(config, context, function(err) {
+            cb(null, {err: err});
           });
         },
 
-        "is 200 ok": function(err, res, context) {
-          assert(err === null);
-          assert(res.code === 200);
+        "works": function(err, result) {
+          assert(result.err === null);
         }
       }
     }
