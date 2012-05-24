@@ -45,13 +45,7 @@ var UserEmailView = Backbone.View.extend({
     } else {
       $(this.el).hide();
     }
-  },
-
-  render: function() {
-    $(this.el).html(this.template(this.model.toJSON()));
-    $(this.el).fadeIn();
-    return this;
-  },
+  }
 });
 
 var AssertionView = Backbone.View.extend({
