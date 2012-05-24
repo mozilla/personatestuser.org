@@ -20,11 +20,19 @@ vows.describe("API vows")
     topic: function() {
       // api creation is asynchronous because we must wait for it
       // to select the config redis_db
-      api = new API(config, this.callback); 
+      var cb = this.callback;
+      api = new API(config, function(err) {
+        // The first return value is intercepted and checked by vows.js 
+        // as err from this callback.  It is not passed on to any tests.
+        // To avoid the confusing uncertainty of passing two nulls and 
+        // testing that the result is 'null', wrap the actual err in 
+        // an object.
+        return cb(null, {err: err});
+      });
     },
 
-    "and it is adorable": function(topic) {
-      assert(!! topic);
+    "and it is adorable": function(result) {
+      assert(result.err === null);
     }
   }
 })
