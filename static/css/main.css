@@ -144,7 +144,7 @@ span.value tt {
   user-select: none;
 }
 
-tt {
+.selectable {
   -webkit-user-select: text;
   -khtml-user-select: text;
   -moz-user-select: text;
