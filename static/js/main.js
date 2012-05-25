@@ -85,6 +85,11 @@ var ApplicationView = Backbone.View.extend({
         self.userEmailView.refresh(data.user);
       } else if (data.assertion) {
         self.assertionView.refresh(data.assertion);
+      } else if (data.status) {
+        $('#status .message')
+          .hide()
+          .text(data.status)
+          .fadeIn(150);
       }
     });
 

@@ -68,6 +68,10 @@ h1 {
   padding: 1em 0em;
 }
 
+#status {
+  min-height: 1.6em;
+}
+
 #fork {
   z-index: 2;
   position: fixed;
