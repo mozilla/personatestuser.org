@@ -11,7 +11,7 @@ function loggit(err) {
   console.log("ERROR (oh noes!):", err);
 }
 
-var server = smtp.createServer('personatestuser.org', function (req) {
+var server = smtp.createServer('restmail.net', function (req) {
   ['rcpt', 'mail', 'to', 'from'].forEach(function(event)  {
     req.on(event, function () {
       var ack = arguments[arguments.length - 1];
@@ -33,10 +33,11 @@ var server = smtp.createServer('personatestuser.org', function (req) {
     mailparser.on('end', function(mail) {
       // Hopefully this is an email for us to finish registration.
       // If it is, push it on a queue where the api verifier will find it.
+      var address = mail.to[0].address;
       var match = mail.text.match(/https:\/\/\S+?verify_email_address\?token=(\S+)/);
       if (match) {
         db.rpush('ptu:mailq', JSON.stringify({
-          email: req.to,
+          email: address,
           token: match[1]
         }));
       } else {
