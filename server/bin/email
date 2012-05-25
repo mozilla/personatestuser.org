@@ -11,7 +11,7 @@ function loggit(err) {
   console.log("ERROR (oh noes!):", err);
 }
 
-var server = smtp.createServer('restmail.net', function (req) {
+var server = smtp.createServer('personatestuser.org', function (req) {
   ['rcpt', 'mail', 'to', 'from'].forEach(function(event)  {
     req.on(event, function () {
       var ack = arguments[arguments.length - 1];
