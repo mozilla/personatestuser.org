@@ -42,7 +42,7 @@ var Verifier = function Verifier(config) {
     multi.exec(function(err, results) {
       if (err) return callback(err);
       var expires = results[0];
-      return redisClient.zadd('ptu:emails', expires, callback);
+      return redisClient.zadd('ptu:emails', expires, email, callback);
     });
   };
 
