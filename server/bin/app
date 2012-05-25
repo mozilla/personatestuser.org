@@ -71,9 +71,10 @@ app.post('/assertion', function postGetAssertion(req, res) {
 // socket.io interface
 
 api.on('error', function(err) {
-  // this is how much i care
+  console.log("ERROR: app: " + err);
 });
 api.on('message', function(message) {
+  console.log("app: " + message);
   io.sockets.emit('message', {'status': message});
 });
 
