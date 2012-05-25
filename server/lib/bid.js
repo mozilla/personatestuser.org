@@ -30,19 +30,20 @@ var Verifier = function Verifier(config) {
 
   this._getEmailPassword = function getEmailPassword(email, callback) {
     redisClient.get('ptu:'+email, function(err, pass) {
-      console.log("password for " + email);
       return callback(err, pass);
     });
   };
 
   this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (email, callback) {
-    var multi = redisClient.multi();
-    multi.zscore('ptu:emails:staged', email);
-    multi.zrem('ptu:emails:staged', email);
-    multi.exec(function(err, results) {
-      if (err) return callback(err);
-      var expires = results[0];
-      return redisClient.zadd('ptu:emails', expires, email, callback);
+    redisClient.zscore('ptu:emails:staging', email, function(err, expires) {
+      // return this right away and then do the movement from staging
+      // to live when we have idle
+      callback(err);
+
+      redisClient.zadd('ptu:emails', expires, email, function(err) {
+        redisClient.zrem('ptu:emails:staging', email, function(err) {
+        });
+      });
     });
   };
 
@@ -88,8 +89,8 @@ var Verifier = function Verifier(config) {
                     self.emit('user-created', data.email);
                   }
                 });
-                self.startVerifyingEmails();
               }
+              self.startVerifyingEmails();
             });
           } else {
             // no password - user staging may have timed out

@@ -30,7 +30,7 @@ function expectSoon(f, interval_ms, callback) {
       return callback(true);
     }
       
-    if (elapsed_ms < interval_ms) {
+    else if (elapsed_ms < interval_ms) {
       elapsed_ms *= 2;
       setTimeout(function() {
         isTrueWithinTime(elapsed_ms);
@@ -38,9 +38,7 @@ function expectSoon(f, interval_ms, callback) {
     } 
     
     else {
-      if (!found) {
-        return callback(false);
-      }
+      return callback(!! found);
     }
   }
   isTrueWithinTime(50);

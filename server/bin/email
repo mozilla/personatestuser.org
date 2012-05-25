@@ -36,12 +36,13 @@ var server = smtp.createServer('restmail.net', function (req) {
       var address = mail.to[0].address;
       var match = mail.text.match(/https:\/\/\S+?verify_email_address\?token=(\S+)/);
       if (match) {
+        console.log("email for " + address + " with token");
         db.rpush('ptu:mailq', JSON.stringify({
           email: address,
           token: match[1]
         }));
       } else {
-        // meh.
+        console.log("email for " + address + " has no token");
       }
     });
 
