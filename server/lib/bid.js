@@ -10,6 +10,8 @@ var config = {
   verifier: service + "/verify"
 };
 
+var redisClient = redis.createClient();
+
 /**
  * The Verifier sits and waits for asynchronous verification emails
  * to show up in redis, where the mail daemon will push them on 
@@ -25,24 +27,34 @@ var Verifier = function Verifier(config) {
   events.EventEmitter.call(this);
   var self = this;
   self.config = config;
-  self.redisClient = redis.createClient();
 
   this._getEmailPassword = function getEmailPassword(email, callback) {
-    self.redisClient.get('ptu:'+email, function(err, pass) {
+    redisClient.get('ptu:'+email, function(err, pass) {
       console.log("password for " + email);
       return callback(err, pass);
     });
   };
 
-  this.verifyNextEmail = function verifyNextEmail() {
+  this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (email, callback) {
+    var multi = redisClient.multi();
+    multi.zscore('ptu:emails:staged', email);
+    multi.zrem('ptu:emails:staged', email);
+    multi.exec(function(err, results) {
+      if (err) return callback(err);
+      var expires = results[0];
+      return redisClient.zadd('ptu:emails', expires, callback);
+    });
+  };
+
+  this.startVerifyingEmails = function startVerifyingEmails() {
     console.log("blpop ...");
-    self.redisClient.blpop('ptu:mailq', 0, function(err, data) {
+    redisClient.blpop('ptu:mailq', 0, function(err, data) {
       // data is a tuple like [qname, data]
       try {
         data = JSON.parse(data[1]);
       } catch (err) {
         // bogus email
-        self.verifyNextEmail();
+        self.startVerifyingEmails();
         return;
       }
 
@@ -69,19 +81,25 @@ var Verifier = function Verifier(config) {
                 // user email and token from the mail queue, fetched the 
                 // corresponding password, and successfully completed the 
                 // creation of that user with browserid.  
-                self.emit('user-created', data.email);
-                self.verifyNextEmail();
+                self._stagedEmailBecomesLive(data.email, function(err) {
+                  if (err) {
+                    self.emit('error', err);
+                  } else {
+                    self.emit('user-created', data.email);
+                  }
+                });
+                self.startVerifyingEmails();
               }
             });
           } else {
             // no password - user staging may have timed out
             console.log("Received a verification email for a user we're not staging");
-            self.verifyNextEmail();
+            self.startVerifyingEmails();
           }
         });
       } else {
         console.log("Got some weird data from the q: " + JSON.stringify(data));
-        self.verifyNextEmail();
+        self.startVerifyingEmails();
       }
     });
   };
@@ -149,6 +167,9 @@ var stageUser = function stageUser(config, context, callback) {
     pass: context.pass,
     site: context.site
   }, function(err, res) {
+    if (err || res.code !== 200) {
+      console.log("stageUser: err=" + err + ", code=" + res.code);
+    }
     if (err) return callback(err);
 
     if (res.code === 429) {
@@ -179,7 +200,12 @@ var stageUser = function stageUser(config, context, callback) {
 }
 
 var createUser = function createUser(config, email, pass, callback) {
-  var context = {keys: {}}
+  var context = {
+    email: email, 
+    pass: pass,
+    site: 'http://personatestuser.org',
+    keys: {}
+  }
 
   getSessionContext(config, context, function(err) {
     if (err) return callback(err);
@@ -209,5 +235,3 @@ module.exports.stageUser = stageUser;
 module.exports.createUser = createUser;
 module.exports.Verifier = Verifier;
 
-var v = new Verifier()
-v.verifyNextEmail()
