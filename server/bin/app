@@ -7,6 +7,7 @@ const express = require('express'),
 
 var api = new API();
 var app = module.exports = express.createServer();
+
 var io = socket_io.listen(app);
 io.set('log level', 1);
 
@@ -41,7 +42,6 @@ app.get('/test_user', function getTestUser(req, res) {
       res.writeHead(500);
       return res.end();
     }
-
     res.contentType('json');
     res.end(JSON.stringify(user));
   });
@@ -69,6 +69,13 @@ app.post('/assertion', function postGetAssertion(req, res) {
 
 // ----------------------------------------------------------------------
 // socket.io interface
+
+api.on('error', function(err) {
+  // this is how much i care
+});
+api.on('message', function(message) {
+  io.sockets.emit('message', {'status': message});
+});
 
 io.on('connection', function(socket) {
   socket.on('message', function(data) {

@@ -1,10 +1,55 @@
 const redis = require('redis'),
       fs = require('fs'),
+      util = require('util'),
+      events = require('events'),
       path = require('path'),
+      bid = require('./bid'),
       DEFAULT_DOMAIN = 'personatestuser.org',
       ONE_HOUR_IN_MS = 60 * 60 * 1000;
 
-module.exports = function API(config, onready) {
+var vconf = {
+  browserid: 'https://diresworb.org',
+  verifier: "https://diresworb.org/verify"
+}
+
+var verifier = new bid.Verifier(vconf);
+verifier.startVerifyingEmails();
+
+// a place to register recently-verified emails.  
+var verifiedEmails = {};
+verifier.on('user-created', function(email) {
+  verifiedEmails[email] = true;
+});
+
+function expectSoon(f, interval_ms, callback) {
+  function isTrueWithinTime(elapsed_ms) {
+
+    var found = false;
+    if (f()) {
+      found = true;
+      return callback(true);
+    }
+      
+    if (elapsed_ms < interval_ms) {
+      elapsed_ms *= 2;
+      setTimeout(function() {
+        isTrueWithinTime(elapsed_ms);
+      }, elapsed_ms);
+    } 
+    
+    else {
+      if (!found) {
+        return callback(false);
+      }
+    }
+  }
+  isTrueWithinTime(50);
+};
+
+var API = module.exports = function API(config, onready) {
+  events.EventEmitter.call(this);
+  var self = this;
+
   // get default config from env
   config = config || {  
     redis_host: process.env["REDIS_HOST"] || "127.0.0.1", 
@@ -16,17 +61,23 @@ module.exports = function API(config, onready) {
   // All our redis keys are prefixed with 'ptu:'
   //
   // ptu:nextval = an iterator
+  // ptu:mailq = a list used as a queue from the mail daemon
+  // ptu:emails:staging = zset of user emails scored by creation date
   // ptu:emails = zset of user emails scored by creation date
   // ptu:<email> = password for user with given email
+  //
+  // Emails start their life in staging and, if all goes well, end
+  // up in ptu:emails once validated etc.  We cull both zsets 
+  // regularly for expired data.
   var redisClient = redis.createClient(config.redis_port, config.redis_host);
 
   redisClient.on('error', function(err) {
-    console.log("Redis client error: " + err);
+    self.emit('error', "Redis client error: " + err);
   });
 
   // XXX i would like to have a select(db, onready), but i'm getting
   // mysterious crashes from hiredis claiming that an error isn't 
-  // being handled.  
+  // being handled (despite the above 'on error' handler)
   onready(null);
 
   this.getTestUser = function getTestUser(callback) {
@@ -36,20 +87,43 @@ module.exports = function API(config, onready) {
       var password = getRandomPassword();
       var email;
 
+      self.emit('message', "Staging new user");
+
       redisClient.incr('ptu:nextval', function(err, val) {
         email = name + val + '@' + DEFAULT_DOMAIN;
         var created = (new Date()).getTime();
         var expires = created + ONE_HOUR_IN_MS;
 
         var multi = redisClient.multi();
-        multi.zadd('ptu:emails', expires, email);
+        multi.zadd('ptu:emails:staging', expires, email);
         multi.set('ptu:'+email, password);
         multi.exec(function(err) {
           if (err) return callback(err);
-          return callback(null, {
-            'email': email, 
-            'password': password,
-            'expires': expires
+          bid.createUser(vconf, email, password, function(err) {
+            if (err) return callback(err);
+
+            // now we wait for the verifier to complete its work.
+            // we expect this to be done within 5 secs.
+            expectSoon(
+              (function() { 
+                self.emit('message', "Verifying new user");
+                return verifiedEmails[email] === true 
+              }),
+              5000, // milliseconds
+              function(it_worked) {
+                if (it_worked) {
+                  self.emit('message', "Verified new user");
+                  return callback(null, {
+                    'email': email, 
+                    'password': password,
+                    'expires': expires
+                  });
+                } else {
+                  self.emit('message', "Aw, snap.  User verification timed out.");
+                  return callback("User creation timed out");
+                }
+              }
+            );
           });
         });
       });
@@ -63,6 +137,7 @@ module.exports = function API(config, onready) {
     try {
       var multi = redisClient.multi();
       multi.del('ptu:'+email);
+      multi.zrem('ptu:emails:staging', email);
       multi.zrem('ptu:emails', email);
       multi.exec(callback);
     } catch (err) {
@@ -95,7 +170,39 @@ module.exports = function API(config, onready) {
     }
   };
 
+  this._cullFromZset = function _cullFromZset(key, age, callback) {
+    // utility function for periodicallyCullUsers
+    // calls back with (err, num_culled)
+    redisClient.zrangebyscore(key, '-inf', age, function(err, results) {
+      if (!err && results.length) {
+        var email;
+        var multi = redisClient.multi();
+
+        // for each of the users, delete the password record and remove
+        // it from the emails zset.
+        for (var i in results) {
+          email = results[i];
+          multi.del('ptu:'+email);
+          multi.zrem('ptu:emails', email);
+        }
+
+        multi.exec(function(err, n) {
+          if (err) {
+            return callback(err);
+          } 
+          // cull again in one minute
+          return callback(null, n.length);
+        });
+      } else {
+        // cull again in one minute
+        return callback(null, 0);
+      }
+    });
+  };
+
   this.periodicallyCullUsers = function periodicallyCullUsers(interval) {
+    var self = this;
+
     // by default, cull every minute
     interval = interval || 60000; 
 
@@ -107,31 +214,13 @@ module.exports = function API(config, onready) {
       var now = (new Date()).getTime();
       var one_hour_ago = now - (60 *60);
 
-      // find all users that were created over an hour ago.
-      redisClient.zrangebyscore('ptu:emails', '-inf', one_hour_ago, function(err, results) {
-        if (!err && results.length) {
-          var email;
-          var multi = redisClient.multi();
-
-          // for each of the users, delete the password record and remove
-          // it from the emails zset.
-          for (var i in results) {
-            email = results[i];
-            multi.del('ptu:'+email);
-            multi.zrem('ptu:emails', email);
-          }
-
-          multi.exec(function(err) {
-            if (err) {
-              console.log('error culling users: ' + err);
-            } 
-            // cull again in one minute
-            setTimeout(cullUsers, interval);
-          });
-        } else {
-          // cull again in one minute
-          setTimeout(cullUsers, interval); 
-        }
+      // cull from our two zsets - staging and verified emails
+      self._cullFromZset('ptu:emails:staging', one_hour_ago, function(err, n) {
+        if (err) self.emit('error', "Error culling from emails:staging: " + err);
+        self._cullFromZset('ptu:emails', one_hour_ago, function(err, n) {
+          if (err) self.emit('error', "Error culling from emails: " + err);
+          setTimeout(cullUsers, interval);
+        });
       });
     }
 
@@ -141,6 +230,7 @@ module.exports = function API(config, onready) {
   this.periodicallyCullUsers();
   return this;
 };
+util.inherits(API, events.EventEmitter);
 
 // ----------------------------------------------------------------------
 // Utils for this module
