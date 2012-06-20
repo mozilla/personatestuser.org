@@ -1,11 +1,17 @@
 const redis = require('redis'),
       fs = require('fs'),
       util = require('util'),
+      url = require('url'),
       events = require('events'),
       path = require('path'),
       bid = require('./bid'),
-      DEFAULT_DOMAIN = 'personatestuser.org',
       ONE_HOUR_IN_MS = 60 * 60 * 1000;
+
+const DEFAULT_DOMAIN =
+  (process.env.PUBLIC_URL ? url.parse(process.env.PUBLIC_URL).hostname :
+   'personatestuser.org');
+
+console.log('my domain is:', DEFAULT_DOMAIN);
 
 var vconf = {
   browserid: 'https://diresworb.org',

@@ -204,7 +204,7 @@ var createUser = function createUser(config, email, pass, callback) {
   var context = {
     email: email, 
     pass: pass,
-    site: 'http://personatestuser.org',
+    site: process.env.PUBLIC_URL || 'http://personatestuser.org',
     keys: {}
   }
 
