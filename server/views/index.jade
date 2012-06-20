@@ -2,18 +2,18 @@
   ul.info
     li
       span.key Username
-      span.value 
+      span.value
         tt.selectable {{ email }}
     li
       span.key Password
-      span.value 
+      span.value
         tt.selectable {{ password }}
     li
       span.key Expires
       span.value {{ expiresDisplay }}
 
-  
-#status 
+
+#status
   .message Generate your very own Persona test user.  &lt;gleam!/&gt;
 
 
@@ -23,13 +23,13 @@
   .info
     #create-user-info
 
-#create-assertion   
-  a(class='function', href='/assertion', id='submit-create-assertion') Get an Assertion!
+  #create-assertion
+    a(class='function', href='/assertion', id='submit-create-assertion') Get an Assertion!
 
-  .info
-    #create-assertion-info
+    .info
+      #create-assertion-info
 
-script 
+script
   head.ready(function() {
     var model = new Application;
     var view = new ApplicationView({model:model});

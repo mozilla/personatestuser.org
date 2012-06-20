@@ -104,6 +104,8 @@ var ApplicationView = Backbone.View.extend({
   },
 
   createUser: function(evt) {
+    // XXX when the user clicks this button, it should
+    // be disabled until the completion process terminates.
     this.userEmailView.refresh();
     this.socket.json.send({method: 'getTestUser'});
     return false;

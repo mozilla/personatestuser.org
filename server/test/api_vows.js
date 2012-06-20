@@ -9,9 +9,9 @@ var api = null;
 // and point the config to it
 var config = {
   redis_host: "127.0.0.1",
-  redis_port: 6379, 
+  redis_port: 6379,
   redis_db: 0
-}
+};
 
 vows.describe("API vows")
 
@@ -22,10 +22,10 @@ vows.describe("API vows")
       // to select the config redis_db
       var cb = this.callback;
       api = new API(config, function(err) {
-        // The first return value is intercepted and checked by vows.js 
+        // The first return value is intercepted and checked by vows.js
         // as err from this callback.  It is not passed on to any tests.
-        // To avoid the confusing uncertainty of passing two nulls and 
-        // testing that the result is 'null', wrap the actual err in 
+        // To avoid the confusing uncertainty of passing two nulls and
+        // testing that the result is 'null', wrap the actual err in
         // an object.
         return cb(null, {err: err});
       });
@@ -47,17 +47,17 @@ vows.describe("API vows")
       assert(data.expires > (new Date()).getTime());
       assert(data.email.indexOf('@') > 0);
       assert(data.password.length >= 16);
-    }, 
-    
-    "stores the email and password": { 
+    },
+
+    "stores the email and password": {
       topic: function(data) {
         var multi = redis.createClient().multi();
         var cb = this.callback;
-        multi.zrank('ptu:emails', data.email);
-        multi.get('ptu:'+data.email);
+        multi.zrank('ptu:emails:valid', data.email);
+        multi.get('ptu:email:'+data.email+':password');
         multi.exec(function(err, results) {
           return cb(err, data, results);
-        });   
+        });
       },
 
       "in redis": function(err, initialData, redisResults) {
@@ -72,8 +72,8 @@ vows.describe("API vows")
           api.deleteTestUser(data.email, function(err) {
             if (err) return cb(err);
             var multi = redis.createClient().multi();
-            multi.zrank('ptu:emails', data.email);
-            multi.get('ptu:'+data.email);
+            multi.zrank('ptu:emails:valid', data.email);
+            multi.get('ptu:email:'+data.email+':password');
             multi.exec(function(err, results) {
               return cb(err, data, results);
             });

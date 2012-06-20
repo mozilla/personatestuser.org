@@ -5,7 +5,7 @@ const vows = require("vows"),
 const config = {
   browserid: 'https://diresworb.org',
   verifier: 'https://diresworb.org/verify'
-}
+};
 
 vows.describe("BID API vows")
 
@@ -19,7 +19,7 @@ vows.describe("BID API vows")
         email: email,
         pass: pass,
         site: 'http://localhost'
-      }
+      };
       bid.getSessionContext(config, context, function(err) {
         cb(err, context);
       });

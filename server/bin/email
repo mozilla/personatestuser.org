@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* -*- Mode: js2; js2-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 var smtp = require('smtp-protocol'),
    redis = require("redis"),
@@ -33,6 +34,8 @@ var server = smtp.createServer('restmail.net', function (req) {
     mailparser.on('end', function(mail) {
       // Hopefully this is an email for us to finish registration.
       // If it is, push it on a queue where the api verifier will find it.
+      // The verifier will use the token to call the complete_user_creation
+      // API to verify the email address.
       var address = mail.to[0].address;
       var match = mail.text.match(/https:\/\/\S+?verify_email_address\?token=(\S+)/);
       if (match) {
@@ -58,5 +61,5 @@ if (process.argv[1] === __filename) {
     server.listen(0, function(err) {
       cb(err, server.address().port);
     });
-  }
+  };
 }

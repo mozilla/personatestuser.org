@@ -1,4 +1,22 @@
 #!/usr/bin/env node
+/* -*- Mode: js2; js2-basic-offset: 2; indent-tabs-mode: nil; -*- */
+
+/**
+ * persona test user generator
+ *
+ * API:
+ *
+ *   /test_user
+ *     Create a test user account with an IdP
+ *     Returns JSON: {email: <account email>,
+ *                    pass: <account password>,
+ *                    expires: <expiration date>}
+ *
+ *   /assertion/:email/:pass/:audience
+ *     Create an assertion for the user with the audience
+ *     XXX Not yet implemented
+ *
+ */
 
 const express = require('express'),
       path = require('path'),
@@ -43,28 +61,28 @@ app.get('/test_user', function getTestUser(req, res) {
       return res.end();
     }
     res.contentType('json');
-    res.end(JSON.stringify(user));
+    return res.end(JSON.stringify(user));
   });
 });
 
-function getAssertion(params, req, res) {
-  api.getAssertion(req.params, function(err, assertion) {
+function _getAssertion(params, req, res) {
+  api.getAssertion(params, function(err, assertion) {
     if (err) {
       res.writeHead(500);
       return res.end();
     }
 
     res.contentType('json');
-    res.end(JSON.stringify(assertion));
+    return res.end(JSON.stringify(assertion));
   });
 }
 
 app.get('/assertion/:email/:password/:audience', function getAssertion(req, res) {
-  getAssertion(req.params, req, res);
+  _getAssertion(req.params, req, res);
 });
 
-app.post('/assertion', function postGetAssertion(req, res) {
-  getAssertion(req.body, req, res);
+app.post('/user_and_assertion/:audience', function postGetAssertion(req, res) {
+  _getAssertion(req.body, req, res);
 });
 
 // ----------------------------------------------------------------------
@@ -75,6 +93,8 @@ api.on('error', function(err) {
 });
 api.on('message', function(message) {
   console.log("app: " + message);
+  // XXX should not broadcast all api messages - only per-socket
+  // by api call
   io.sockets.emit('message', {'status': message});
 });
 
@@ -98,4 +118,3 @@ if (!module.parent) {
     console.log("Express server listening on port %d in %s mode", app.address().port, app.settings.env);
   });
 }
-

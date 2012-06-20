@@ -1,10 +1,13 @@
+/**
+ * bid.js - BrowserID protocol implementation
+ */
 
 const util = require('util'),
       events = require('events'),
       redis = require('redis'),
       wsapi = require('./wsapi_client');
 
-var service = 'https://diresworb.org'
+var service = 'https://diresworb.org';
 var config = {
   browserid: service,
   verifier: service + "/verify"
@@ -14,8 +17,8 @@ var redisClient = redis.createClient();
 
 /**
  * The Verifier sits and waits for asynchronous verification emails
- * to show up in redis, where the mail daemon will push them on 
- * arrival.  
+ * to show up in redis, where the mail daemon will push them on
+ * arrival.
  *
  * When an email arrives, the verifier checks that it matches a user
  * we are currently staging.  If it does, it sends a complete_user_creation.
@@ -29,7 +32,7 @@ var Verifier = function Verifier(config) {
   self.config = config;
 
   this._getEmailPassword = function getEmailPassword(email, callback) {
-    redisClient.get('ptu:'+email, function(err, pass) {
+    redisClient.get('ptu:email:'+email+':password', function(err, pass) {
       return callback(err, pass);
     });
   };
@@ -40,7 +43,7 @@ var Verifier = function Verifier(config) {
       // to live when we have idle
       callback(err);
 
-      redisClient.zadd('ptu:emails', expires, email, function(err) {
+      redisClient.zadd('ptu:emails:valid', expires, email, function(err) {
         redisClient.zrem('ptu:emails:staging', email, function(err) {
         });
       });
@@ -48,7 +51,6 @@ var Verifier = function Verifier(config) {
   };
 
   this.startVerifyingEmails = function startVerifyingEmails() {
-    console.log("blpop ...");
     redisClient.blpop('ptu:mailq', 0, function(err, data) {
       // data is a tuple like [qname, data]
       try {
@@ -61,12 +63,12 @@ var Verifier = function Verifier(config) {
 
       if (data.email && data.token) {
 
-        // Get the user's password.  This will verify that 
+        // Get the user's password.  This will verify that
         // we are staging this user
         self._getEmailPassword(data.email, function(err, pass) {
           if (!err && pass) {
             // Complete the user creation with browserid
-            wsapi.post(self.config, '/wsapi/complete_user_creation', {}, { 
+            wsapi.post(self.config, '/wsapi/complete_user_creation', {}, {
               token: data.token,
               pass: pass
             }, function(err, res) {
@@ -79,9 +81,9 @@ var Verifier = function Verifier(config) {
                 // The smell of success.
                 //
                 // No errors.  Whew!  If we are here, we have retrieved a
-                // user email and token from the mail queue, fetched the 
-                // corresponding password, and successfully completed the 
-                // creation of that user with browserid.  
+                // user email and token from the mail queue, fetched the
+                // corresponding password, and successfully completed the
+                // creation of that user with browserid.
                 self._stagedEmailBecomesLive(data.email, function(err) {
                   if (err) {
                     self.emit('error', err);
@@ -106,11 +108,12 @@ var Verifier = function Verifier(config) {
   };
 
   return this;
-}
+};
+
 util.inherits(Verifier, events.EventEmitter);
 
 var getSessionContext = function getSessionContext(config, context, callback) {
-  // Get a session_context 
+  // Get a session_context
   // Modify @context in place with results
 
   wsapi.get(config, '/wsapi/session_context', context, {
@@ -138,9 +141,9 @@ var getSessionContext = function getSessionContext(config, context, callback) {
       context[key] = session[key];
     }
 
-    return callback(null, res); 
+    return callback(null, res);
   });
-}
+};
 
 var getAddressInfo = function getAddressInfo(config, context, callback) {
   // I don't know if we care about the address info ...
@@ -159,7 +162,7 @@ var getAddressInfo = function getAddressInfo(config, context, callback) {
 
     return callback(null, res);
   });
-}
+};
 
 var stageUser = function stageUser(config, context, callback) {
   wsapi.post(config, '/wsapi/stage_user', context, {
@@ -198,15 +201,15 @@ var stageUser = function stageUser(config, context, callback) {
       */
     return callback(null);
   });
-}
+};
 
 var createUser = function createUser(config, email, pass, callback) {
   var context = {
-    email: email, 
+    email: email,
     pass: pass,
     site: 'http://personatestuser.org',
     keys: {}
-  }
+  };
 
   getSessionContext(config, context, function(err) {
     if (err) return callback(err);
@@ -215,17 +218,27 @@ var createUser = function createUser(config, email, pass, callback) {
       if (err) return callback(err);
 
       stageUser(config, context, function(err, url) {
-        if (err) return callback(err);
+	if (err) return callback(err);
+
+	// Store the session for this email, so we can
+	// continue our conversation with the server later
+	// to get a cert.  Use a volatile key with a TTL
+	// of 60 seconds so we don't have to worry about
+	// cleaning this up later.
+	redisClient.setex(
+	  'ptu:email:'+email+':session',
+	  60,
+	  JSON.stringify(context));
 
         // Now we wait for an email to return from browserid.
         // The email will be received by bin/email, which will
         // push the email address and token pair into a redis
-        // queue.  
+        // queue.
         return callback(null);
       });
     });
   });
-}
+};
 
 // the individual api calls
 module.exports.getSessionContext = getSessionContext;
@@ -235,4 +248,3 @@ module.exports.stageUser = stageUser;
 // higher-level compositions
 module.exports.createUser = createUser;
 module.exports.Verifier = Verifier;
-
