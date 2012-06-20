@@ -14,9 +14,19 @@ const DEFAULT_DOMAIN =
 console.log('my domain is:', DEFAULT_DOMAIN);
 
 var vconf = {
-  browserid: 'https://diresworb.org',
-  verifier: "https://diresworb.org/verify"
-}
+  prod: {
+    browserid: 'https://browserid.org',
+    verifier: "https://browserid.org/verify"
+  },
+  stage: {
+    browserid: 'https://diresworb.org',
+    verifier: "https://diresworb.org/verify"
+  },
+  dev: {
+    browserid: 'https://login.dev.anosrep.org',
+    verifier: "https://verifier.dev.anosrep.org"
+  }
+};
 
 var verifier = new bid.Verifier(vconf);
 verifier.startVerifyingEmails();
@@ -84,7 +94,7 @@ var API = module.exports = function API(config, onready) {
   // being handled (despite the above 'on error' handler)
   onready(null);
 
-  this.getTestUser = function getTestUser(callback) {
+  this.getTestUser = function getTestUser(serverEnv, callback) {
     // pick a unique username and assign a random password.
     try {
       var name = getRandomName();
@@ -101,9 +111,10 @@ var API = module.exports = function API(config, onready) {
         var multi = redisClient.multi();
         multi.zadd('ptu:emails:staging', expires, email);
         multi.set('ptu:'+email, password);
+        multi.set('ptu:env:'+email, serverEnv);
         multi.exec(function(err) {
           if (err) return callback(err);
-          bid.createUser(vconf, email, password, function(err) {
+          bid.createUser(vconf[serverEnv], email, password, function(err) {
             if (err) return callback(err);
 
             // now we wait for the verifier to complete its work.
@@ -141,6 +152,7 @@ var API = module.exports = function API(config, onready) {
     try {
       var multi = redisClient.multi();
       multi.del('ptu:'+email);
+      multi.del('ptu:env:'+email);
       multi.zrem('ptu:emails:staging', email);
       multi.zrem('ptu:emails', email);
       multi.exec(callback);
@@ -187,6 +199,7 @@ var API = module.exports = function API(config, onready) {
         for (var i in results) {
           email = results[i];
           multi.del('ptu:'+email);
+          multi.del('ptu:env:'+email);
           multi.zrem('ptu:emails', email);
         }
 
