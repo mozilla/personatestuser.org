@@ -23,7 +23,9 @@ var Verifier = function Verifier() {
   events.EventEmitter.call(this);
   var self = this;
 
-  this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (email, expires, callback) {
+  this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (userData, callback) {
+    var email = userData.email;
+    var expires = userData.expires;
     getRedisClient()
       .multi()
       .zadd('ptu:emails:valid', expires, email)
@@ -35,63 +37,74 @@ var Verifier = function Verifier() {
       });
   };
 
+  this.completeUserCreation = function(userData, callback) {
+    var err = null;
+    wsapi.post(vconf[userData.env], '/wsapi/complete_user_creation', {}, {
+      token: userData.token,
+      pass: userData.password
+    }, function(err, res) {
+      if (res.code !== 200) {
+        err = "Server returned " + res.code;
+      }
+
+      if (err) {
+        return callback("Can't complete user creation: " + err);
+      } else {
+        self._stagedEmailBecomesLive(userData.email, callback);
+      }
+    });
+  };
+
   this.startVerifyingEmails = function startVerifyingEmails() {
-    getRedisClient().blpop('ptu:mailq', 0, function(err, data) {
+    var cli = getRedisClient();
+
+    cli.blpop('ptu:mailq', 0, function(err, data) {
       // data is a tuple like [qname, data]
       try {
         data = JSON.parse(data[1]);
       } catch (err) {
         // bogus email
+        console.log("bogus email data; start verifying again");
         self.startVerifyingEmails();
         return;
       }
 
       var email = data.email;
       var token = data.token;
-      if (email && token) {
-        // Get the user's password.  This will verify that
-        // we are staging this user
-        getRedisClient().hgetall("ptu:email:"+email, function(err, data) {
-          var pass = data.password;
-          var serverEnv = data.env;
-          if (!err && pass && serverEnv) {
-            // Complete the user creation with browserid
-            wsapi.post(vconf[serverEnv], '/wsapi/complete_user_creation', {}, {
-              token: token,
-              pass: pass
-            }, function(err, res) {
-              if (res.code !== 200) {
-                err = new Error("Server returned " + res.code);
-              }
-              if (err) {
-                self.emit('error', "Can't complete user creation: " + err);
-              } else {
-                // The smell of success.
-                //
-                // No errors.  Whew!  If we are here, we have retrieved a
-                // user email and token from the mail queue, fetched the
-                // corresponding password, and successfully completed the
-                // creation of that user with browserid.
-                self._stagedEmailBecomesLive(email, data.expires, function(err) {
-                  if (err) {
-                    self.emit('error', err);
-                  } else {
-                    self.emit('user-created', email);
-                  }
-                });
-              }
-              self.startVerifyingEmails();
-            });
-          } else {
-            // no password - user staging may have timed out
-            console.log("Received a verification email for a user we're not staging");
-            self.startVerifyingEmails();
-          }
-        });
-      } else {
-        console.log("Got some weird data from the q: " + JSON.stringify(data));
+      if (! (email && token)) {
+        console.log("both email and token not provided: " + data);
         self.startVerifyingEmails();
+        return;
       }
+
+      // Stash the token, which is necessary to complete the bid
+      // verification process, and then get all the data on this user
+	  var multi = cli.multi();
+      multi.hset('ptu:email:'+email, 'token', token);
+      multi.hgetall('ptu:email:'+email);
+      multi.exec(function(err, results) {
+        if (err || results.length < 2) {
+          console.log("couldn't store token and retrieve user data");
+          self.startVerifyingEmails();
+          return;
+        }
+        var userData = results[1];
+
+        // maybe complete user creation
+        if (userData.do_verify === 'yes') {
+          self.completeUserCreation(userData, function(err) {
+            if (err) {
+              self.emit('error', err);
+            } else {
+              self.emit('user-ready', email, null);
+            }
+            self.startVerifyingEmails();
+          });
+        } else {
+          self.emit('user-ready', email, token);
+          self.startVerifyingEmails();
+        }
+      });
     });
   };
 
@@ -176,20 +189,6 @@ var stageUser = function stageUser(config, context, callback) {
       return callback(new Error("Can't stage user: server status " + res.code));
     }
 
-
-    /*
-      Thanks for verifying your email address. This message is being sent to
-    you to complete your sign-in to http://localhost.
-
-      Finish registration by clicking this link:
-    https://diresworb.org/verify_email_address?token=7B4fNtCXd2zgDeJRRHp8ClZSMDxxr8FJPO17UGRlf5dozozp
-
-      If you are NOT trying to sign into this site, just ignore this email.
-
-      Thanks,
-      BrowserID
-      (A better way to sign in)
-      */
     return callback(null);
   });
 };
@@ -212,7 +211,7 @@ var createUser = function createUser(config, email, pass, callback) {
       stageUser(config, context, function(err) {
         if (err) return callback(err);
 
-	    // Store the session for this email, so we can
+        // Store the session for this email, so we can
         // continue our conversation with the server later
         // to get a cert.
 

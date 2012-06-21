@@ -25,7 +25,8 @@ var verifier = new bid.Verifier(vconf);
 verifier.startVerifyingEmails();
 
 // a place to register recently-verified emails.
-var verifiedEmails = {};
+var availableEmails = {};
+
 
 function expectSoon(f, interval_ms, callback) {
   function isTrueWithinTime(elapsed_ms) {
@@ -78,7 +79,7 @@ var API = module.exports = function API(config, onready) {
   // is complete and we can use the email/password pair.
   //
   // Of course, it's possible that this process may never complete due to
-  // network issues, intense solar flare activity, smurfs, etc.  So
+  // network issues, intense solar flare activity, frisky smurfs, etc.  So
   // getVerifiedEmail (below) will timeout and return an error if the email
   // creation has not completed within five seconds.
   var verifier = new bid.Verifier(vconf);
@@ -86,8 +87,8 @@ var API = module.exports = function API(config, onready) {
   verifier.on('error', function(err) {
     console.log("Verifier ERROR: " + err);
   });
-  verifier.on('user-created', function(email) {
-    verifiedEmails[email] = true;
+  verifier.on('user-ready', function(email, token) {
+    availableEmails[email] = token || true;
   });
 
   // XXX i would like to have a select(db, onready), but i'm getting
@@ -95,13 +96,11 @@ var API = module.exports = function API(config, onready) {
   // being handled (despite the above 'on error' handler)
   onready(null);
 
-  this.stageNewEmail = function stageNewEmail(serverEnv, callback) {
+  this.generateNewEmail = function generateNewEmail(serverEnv, callback) {
     var name = getRandomName();
     var password = getRandomPassword();
     // we will assign the exact email below
     var email;
-
-    self.emit('message', "Staging new user");
 
     getRedisClient().incr('ptu:nextval', function(err, val) {
       email = name + val + '@' + DEFAULT_DOMAIN;
@@ -128,7 +127,28 @@ var API = module.exports = function API(config, onready) {
    * creation url.
    */
   this.getUnverifiedEmail = function getUnverifiedEmail(serverEnv, callback) {
-    // stub
+    self.generateNewEmail(serverEnv, function(err, data) {
+      if (err) return callback(err);
+      getRedisClient().hset(data.email, 'do_verify', 0, function(err) {
+        if (err) return callback(err);
+        expectSoon(
+          function() {
+            return (!! verificationTokens[data.email]);
+          },
+          5000,
+          function(it_worked) {
+            if (it_worked) {
+              data['token'] = verificationTokens[data.email];
+              getRedisClient().hset(data.email, 'token', data.token, function(err) {
+                return callback(null, data);
+              });
+            } else {
+                return callback("timed out");
+            }
+          }
+        );
+      });
+    });
   };
 
   /*
@@ -138,7 +158,7 @@ var API = module.exports = function API(config, onready) {
    * timed out and call back with an error.
    */
   this.getVerifiedEmail = function getVerifiedEmail(serverEnv, callback) {
-    this.stageNewEmail(serverEnv, function(err, data) {
+    this.generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
       var email = data.email;
       var password = data.password;
@@ -155,7 +175,7 @@ var API = module.exports = function API(config, onready) {
         expectSoon(
           (function() {
              self.emit('message', "Verifying new user");
-             return verifiedEmails[email] === true;
+             return availableEmails[email] === true;
            }),
            5000, // milliseconds
            function(it_worked) {
@@ -163,7 +183,7 @@ var API = module.exports = function API(config, onready) {
                console.log("getVerifiedUser: SUCCESS! verified " + email);
                self.emit('message', "Verified new user");
                // clean up
-               delete verifiedEmails[email];
+               delete availableEmails[email];
                return callback(null, data);
              } else {
                self.emit('message', "Aw, snap.  User verification timed out.");
@@ -264,7 +284,7 @@ var API = module.exports = function API(config, onready) {
           if (err) {
             return callback(err);
           } else {
-            console.log("culled " + numCulled + " emails");
+            if (numCulled) console.log("culled " + numCulled + " emails");
             return callback(null, numCulled);
           }
         });

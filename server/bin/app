@@ -56,6 +56,7 @@ app.get('/', function(req, res) {
   res.render('index');
 });
 
+// XXX to do - make env check in middleware
 
 app.get('/email/verified/:env?', function getVerifiedEmail(req, res) {
   var serverEnv = req.param('env', 'prod');
@@ -64,18 +65,31 @@ app.get('/email/verified/:env?', function getVerifiedEmail(req, res) {
     return res.end("env must be one of " + allowedEnvs.join(', '));
   }
 
-  api.getVerifiedEmail(serverEnv, function(err, email) {
+  api.getVerifiedEmail(serverEnv, function(err, data) {
     if (err) {
       res.writeHead(500);
       return res.end();
     }
     res.contentType('json');
-    return res.end(JSON.stringify(email));
+    return res.end(JSON.stringify(data));
   });
 });
 
 app.get('/email/unverified/:env?', function getUnverifiedEmail(req, res) {
-  return res.end("stub");
+  var serverEnv = req.param('env', 'prod');
+  if (allowedEnvs.indexOf(serverEnv) === -1) {
+    res.writeHead(400);
+    return res.end("env must be one of " + allowedEnvs.join(', '));
+  }
+
+  api.getUnverifiedEmail(serverEnv, function(err, data) {
+    if (err) {
+      res.writeHead(500);
+      return res.end();
+    }
+    res.contentType('json');
+    return res.end(JSON.stringify(data));
+  });
 });
 
 app.get('/assertion/:audience/email/:email/password/:password/:env?', function getAssertion(rea, res) {
