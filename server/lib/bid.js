@@ -31,15 +31,6 @@ var Verifier = function Verifier(config) {
   var self = this;
   self.config = config;
 
-  this._getEmailPassword = function getEmailPassword(email, callback) {
-    redisClient.get('ptu:email:'+email, function(err, pass) {
-      if (err) return callback(err, pass);
-      redisClient.get('ptu:email:'+email+':env', function(err, serverEnv) {
-        return callback(err, pass, serverEnv);
-      });
-    });
-  };
-
   this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (email, callback) {
     redisClient.zscore('ptu:emails:staging', email, function(err, expires) {
       // return this right away and then do the movement from staging
@@ -64,15 +55,18 @@ var Verifier = function Verifier(config) {
         return;
       }
 
-      if (data.email && data.token) {
-
+      var email = data.email;
+      var token = data.token;
+      if (email && token) {
         // Get the user's password.  This will verify that
         // we are staging this user
-        self._getEmailPassword(data.email, function(err, pass, serverEnv) {
+        redisClient.hgetall(email, function(err, data) {
+          var pass = data.password;
+          var serverEnv = data.env;
           if (!err && pass && serverEnv) {
             // Complete the user creation with browserid
             wsapi.post(self.config[serverEnv], '/wsapi/complete_user_creation', {}, {
-              token: data.token,
+              token: token,
               pass: pass
             }, function(err, res) {
               if (res.code !== 200) {
@@ -87,11 +81,11 @@ var Verifier = function Verifier(config) {
                 // user email and token from the mail queue, fetched the
                 // corresponding password, and successfully completed the
                 // creation of that user with browserid.
-                self._stagedEmailBecomesLive(data.email, function(err) {
+                self._stagedEmailBecomesLive(email, function(err) {
                   if (err) {
                     self.emit('error', err);
                   } else {
-                    self.emit('user-created', data.email);
+                    self.emit('user-created', email);
                   }
                 });
               }
@@ -221,23 +215,18 @@ var createUser = function createUser(config, email, pass, callback) {
       if (err) return callback(err);
 
       stageUser(config, context, function(err, url) {
-	if (err) return callback(err);
+        if (err) return callback(err);
 
-	// Store the session for this email, so we can
-	// continue our conversation with the server later
-	// to get a cert.  Use a volatile key with a TTL
-	// of 60 seconds so we don't have to worry about
-	// cleaning this up later.
-	redisClient.setex(
-	  'ptu:email:'+email+':session',
-	  60,
-	  JSON.stringify(context));
+	    // Store the session for this email, so we can
+        // continue our conversation with the server later
+        // to get a cert.
 
+        redisClient.hset('ptu:email:'+email, 'session', JSON.stringify(context), function(err) {
         // Now we wait for an email to return from browserid.
         // The email will be received by bin/email, which will
         // push the email address and token pair into a redis
         // queue.
-        return callback(null);
+        return callback(err);
       });
     });
   });

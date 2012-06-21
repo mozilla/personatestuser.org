@@ -54,7 +54,7 @@ vows.describe("API vows")
         var multi = redis.createClient().multi();
         var cb = this.callback;
         multi.zrank('ptu:emails:valid', data.email);
-        multi.get('ptu:email:'+data.email+':password');
+        multi.hgetall('ptu:email:'+data.email);
         multi.exec(function(err, results) {
           return cb(err, data, results);
         });
@@ -63,7 +63,7 @@ vows.describe("API vows")
       "in redis": function(err, initialData, redisResults) {
         assert(err === null);
         assert(redisResults[0] >= 0);
-        assert(redisResults[1] === initialData.password);
+        assert(redisResults[1]['password'] === initialData.password);
       },
 
       "which we can delete": {
@@ -73,7 +73,7 @@ vows.describe("API vows")
             if (err) return cb(err);
             var multi = redis.createClient().multi();
             multi.zrank('ptu:emails:valid', data.email);
-            multi.get('ptu:email:'+data.email+':password');
+            multi.hgetall('ptu:email:'+data.email);
             multi.exec(function(err, results) {
               return cb(err, data, results);
             });

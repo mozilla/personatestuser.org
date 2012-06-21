@@ -82,9 +82,7 @@ var API = module.exports = function API(config, onready) {
   // ptu:mailq          = a list used as a queue from the mail daemon
   // ptu:emails:staging = zset of user emails scored by creation date
   // ptu:emails:valid   = zset of user emails scored by creation date
-  // ptu:email:<email>:password = password for user with given email
-  // ptu:email:<email>:session  = session context for bid transactions
-  // ptu:email:<email>:env      = the browserid deployment it uses
+  // ptu:email:<email>  = hash containing password, session, and env
   //
   // Emails start their life in staging and, if all goes well, end
   // up in ptu:emails once validated etc.  We cull both zsets
@@ -133,8 +131,7 @@ var API = module.exports = function API(config, onready) {
 
         var multi = redisClient.multi();
         multi.zadd('ptu:emails:staging', expires, email);
-        multi.set('ptu:email:'+email+':password', password);
-        multi.set('ptu:email:'+email+':env', serverEnv);
+        multi.hmset('ptu:email:'+email, {password:password, env:env});
         multi.exec(function(err) {
           if (err) return callback(err);
           bid.createUser(vconf[serverEnv], email, password, function(err) {
@@ -180,8 +177,6 @@ var API = module.exports = function API(config, onready) {
     try {
       var multi = redisClient.multi();
       multi.del('ptu:email:'+email);
-      multi.del('ptu:email:'+email+':session');
-      multi.del('ptu:email:'+email+':env');
       multi.zrem('ptu:emails:staging', email);
       multi.zrem('ptu:emails:valid', email);
       return multi.exec(callback);
@@ -243,9 +238,7 @@ var API = module.exports = function API(config, onready) {
         // it from the emails zset.
         for (var i in results) {
           email = results[i];
-          multi.del('ptu:email:'+email+':password');
-          multi.del('ptu:email:'+email+':session');
-          multi.del('ptu:email:'+email+':env');
+          multi.del('ptu:email:'+email);
           multi.zrem('ptu:emails:valid', email);
           multi.zrem('ptu:emails:staging', email);
         }
