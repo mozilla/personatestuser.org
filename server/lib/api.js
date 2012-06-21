@@ -120,7 +120,10 @@ var API = module.exports = function API(config, onready) {
     try {
       var name = getRandomName();
       var password = getRandomPassword();
+      // we will assign the exact email below
       var email;
+
+      console.log("in getTestUser");
 
       self.emit('message', "Staging new user");
 
@@ -129,12 +132,17 @@ var API = module.exports = function API(config, onready) {
         var created = (new Date()).getTime();
         var expires = created + ONE_HOUR_IN_MS;
 
+        console.log("getTestUser: email = " + email);
+
         var multi = redisClient.multi();
         multi.zadd('ptu:emails:staging', expires, email);
         multi.hmset('ptu:email:'+email, {password:password, env:serverEnv});
         multi.exec(function(err) {
+
+          console.log("getTestUser: stage " + email + " with err =  " +err);
           if (err) return callback(err);
           bid.createUser(vconf[serverEnv], email, password, function(err) {
+            console.log("getTestUser: in callback from bid.createUser; err = " + err);
             if (err) return callback(err);
 
             // Now check periodically for the email to have appeared in
@@ -150,6 +158,7 @@ var API = module.exports = function API(config, onready) {
               5000, // milliseconds
               function(it_worked) {
                 if (it_worked) {
+                  console.log("getTestUser: SUCCESS! verified " + email);
                   self.emit('message', "Verified new user");
                   // clean up
                   delete verifiedEmails[email];
@@ -226,34 +235,38 @@ var API = module.exports = function API(config, onready) {
     }
   };
 
-  this._cullFromZset = function _cullFromZset(key, age, callback) {
-    // utility function for periodicallyCullUsers
-    // calls back with (err, num_culled)
-    redisClient.zrangebyscore(key, '-inf', age, function(err, results) {
-      if (!err && results.length) {
-        var email;
-        var multi = redisClient.multi();
+  /*
+   * Utility function for periodicallyCullUsers
+   * Calls back with err, numCulled.
+   */
+  this._cullOldEmails = function _cullFromStore(age, callback) {
+    var keys = ['ptu:emails:valid', 'ptu:emails:staging'];
+    var multi = redisClient.multi();
+    var numCulled = 0;
+    var email;
 
-        // for each of the users, delete the password record and remove
-        // it from the emails zset.
-        for (var i in results) {
-          email = results[i];
-          multi.del('ptu:email:'+email);
-          multi.zrem('ptu:emails:valid', email);
-          multi.zrem('ptu:emails:staging', email);
-        }
+    keys.forEach(function(zkey) {
+      redisClient.zrangebyscore(key, '-inf', age, function(err, results) {
+        if (!err && results.length) {
 
-        multi.exec(function(err, n) {
-          if (err) {
-            return callback(err);
+          // for each of the users, delete the password record and remove
+          // it from the emails zset.
+          for (var i in results) {
+            numCulled ++;
+            email = results[i];
+            console.log("culling expired email: " + email);
+            multi.del('ptu:email:'+email);
+            multi.zrem('zkey', email);
           }
-          // cull again in one minute
-          return callback(null, n.length);
-        });
-      } else {
-        // cull again in one minute
-        return callback(null, 0);
+        }
+      });
+    });
+
+    multi.exec(function(err) {
+      if (err) {
+        return callback(err);
       }
+      return callback(null, numCulled);
     });
   };
 
@@ -271,13 +284,8 @@ var API = module.exports = function API(config, onready) {
       var now = (new Date()).getTime();
       var one_hour_ago = now - (60 *60);
 
-      // cull from our two zsets - staging and verified emails
-      self._cullFromZset('ptu:emails:staging', one_hour_ago, function(err, n) {
-        if (err) self.emit('error', "Error culling from emails:staging: " + err);
-        self._cullFromZset('ptu:emails:valid', one_hour_ago, function(err, n) {
-          if (err) self.emit('error', "Error culling from emails: " + err);
-          setTimeout(cullUsers, interval);
-        });
+      self._cullOldEmails(one_hour_ago, function(err, n) {
+        setTimeout(cullUsers, interval);
       });
     }
 

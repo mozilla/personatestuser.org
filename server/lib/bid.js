@@ -137,6 +137,7 @@ var getSessionContext = function getSessionContext(config, context, callback) {
     for (var key in session) {
       context[key] = session[key];
     }
+    console.log("context updated with session_context response");
 
     return callback(null, res);
   });
@@ -162,6 +163,8 @@ var getAddressInfo = function getAddressInfo(config, context, callback) {
 };
 
 var stageUser = function stageUser(config, context, callback) {
+  console.log("bid.stageUser config: " + JSON.stringify(config, null, 2));
+  console.log("bid.stageUser context: " + JSON.stringify(context, null, 2));
   wsapi.post(config, '/wsapi/stage_user', context, {
     csrf: context.csrf_token,
     email: context.email,
@@ -201,6 +204,7 @@ var stageUser = function stageUser(config, context, callback) {
 };
 
 var createUser = function createUser(config, email, pass, callback) {
+  console.log("bid.createUser email: " + email);
   var context = {
     email: email,
     pass: pass,
@@ -214,14 +218,15 @@ var createUser = function createUser(config, email, pass, callback) {
     getAddressInfo(config, context, function(err) {
       if (err) return callback(err);
 
-      stageUser(config, context, function(err, url) {
+      stageUser(config, context, function(err) {
         if (err) return callback(err);
 
 	    // Store the session for this email, so we can
         // continue our conversation with the server later
         // to get a cert.
 
-        redisClient.hset('ptu:email:'+email, 'session', JSON.stringify(context), function(err) {
+        var cli = redis.createClient();
+        cli.hset('ptu:email:'+email, 'session', JSON.stringify(context), function(err) {
           // Now we wait for an email to return from browserid.
           // The email will be received by bin/email, which will
           // push the email address and token pair into a redis
