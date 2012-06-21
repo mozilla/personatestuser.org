@@ -6,6 +6,7 @@ const redis = require('redis'),
       events = require('events'),
       path = require('path'),
       bid = require('./bid'),
+      vconf = require('./vconf'),
       ALGORITHM = "RS",
       KEYSIZE = 256,
       ONE_HOUR_IN_MS = 60 * 60 * 1000;
@@ -19,21 +20,6 @@ const DEFAULT_DOMAIN =
    'personatestuser.org');
 
 console.log('my domain is:', DEFAULT_DOMAIN);
-
-var vconf = {
-  prod: {
-    browserid: 'https://browserid.org',
-    verifier: "https://browserid.org/verify"
-  },
-  stage: {
-    browserid: 'https://diresworb.org',
-    verifier: "https://diresworb.org/verify"
-  },
-  dev: {
-    browserid: 'https://login.dev.anosrep.org',
-    verifier: "https://verifier.dev.anosrep.org"
-  }
-};
 
 var verifier = new bid.Verifier(vconf);
 verifier.startVerifyingEmails();
@@ -106,6 +92,9 @@ var API = module.exports = function API(config, onready) {
   // creation has not completed within five seconds.
   var verifier = new bid.Verifier(vconf);
   verifier.startVerifyingEmails();
+  verifier.on('error', function(err) {
+    console.log("Verifier ERROR: " + err);
+  });
   verifier.on('user-created', function(email) {
     verifiedEmails[email] = true;
   });
@@ -136,7 +125,14 @@ var API = module.exports = function API(config, onready) {
 
         var multi = redisClient.multi();
         multi.zadd('ptu:emails:staging', expires, email);
-        multi.hmset('ptu:email:'+email, {password:password, env:serverEnv});
+        // save the expiration date in the hash, so we don't have to
+        // look it up in the zsets.  Saves a redis call round-trip.
+        multi.hmset('ptu:email:'+email, {
+                      email: email,
+                      password: password,
+                      env: serverEnv,
+                      expires: expires
+                    });
         multi.exec(function(err) {
 
           console.log("getTestUser: stage " + email + " with err =  " +err);
@@ -246,7 +242,7 @@ var API = module.exports = function API(config, onready) {
     var email;
 
     keys.forEach(function(zkey) {
-      redisClient.zrangebyscore(key, '-inf', age, function(err, results) {
+      redisClient.zrangebyscore(zkey, '-inf', age, function(err, results) {
         if (!err && results.length) {
 
           // for each of the users, delete the password record and remove

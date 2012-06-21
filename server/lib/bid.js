@@ -5,15 +5,8 @@
 const util = require('util'),
       events = require('events'),
       redis = require('redis'),
+      vconf = require('./vconf'),
       wsapi = require('./wsapi_client');
-
-var service = 'https://diresworb.org';
-var config = {
-  browserid: service,
-  verifier: service + "/verify"
-};
-
-var redisClient = redis.createClient();
 
 /**
  * The Verifier sits and waits for asynchronous verification emails
@@ -26,26 +19,24 @@ var redisClient = redis.createClient();
  *
  * The api will catch the happy signal inside the create user sequence.
  */
-var Verifier = function Verifier(config) {
+var Verifier = function Verifier() {
   events.EventEmitter.call(this);
   var self = this;
-  self.config = config;
 
-  this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (email, callback) {
-    redisClient.zscore('ptu:emails:staging', email, function(err, expires) {
-      // return this right away and then do the movement from staging
-      // to live when we have idle
-      callback(err);
-
-      redisClient.zadd('ptu:emails:valid', expires, email, function(err) {
-        redisClient.zrem('ptu:emails:staging', email, function(err) {
-        });
+  this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (email, expires, callback) {
+    redis.createClient()
+      .multi()
+      .zadd('ptu:emails:valid', expires, email)
+      .zrem('ptu:emails:staging', email)
+      .exec(function(err, results) {
+        if (err) return callback(err);
+        console.log("Email now live: " + email + "; expires: " + expires);
+        return callback(null);
       });
-    });
   };
 
   this.startVerifyingEmails = function startVerifyingEmails() {
-    redisClient.blpop('ptu:mailq', 0, function(err, data) {
+    redis.createClient().blpop('ptu:mailq', 0, function(err, data) {
       // data is a tuple like [qname, data]
       try {
         data = JSON.parse(data[1]);
@@ -60,12 +51,12 @@ var Verifier = function Verifier(config) {
       if (email && token) {
         // Get the user's password.  This will verify that
         // we are staging this user
-        redisClient.hgetall(email, function(err, data) {
+        redisClient.hgetall("ptu:email:"+email, function(err, data) {
           var pass = data.password;
           var serverEnv = data.env;
           if (!err && pass && serverEnv) {
             // Complete the user creation with browserid
-            wsapi.post(self.config[serverEnv], '/wsapi/complete_user_creation', {}, {
+            wsapi.post(vconf[serverEnv], '/wsapi/complete_user_creation', {}, {
               token: token,
               pass: pass
             }, function(err, res) {
@@ -81,7 +72,7 @@ var Verifier = function Verifier(config) {
                 // user email and token from the mail queue, fetched the
                 // corresponding password, and successfully completed the
                 // creation of that user with browserid.
-                self._stagedEmailBecomesLive(email, function(err) {
+                self._stagedEmailBecomesLive(email, data.expires, function(err) {
                   if (err) {
                     self.emit('error', err);
                   } else {
