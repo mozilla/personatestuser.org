@@ -30,7 +30,10 @@ var Verifier = function Verifier(config) {
 
   this._getEmailPassword = function getEmailPassword(email, callback) {
     redisClient.get('ptu:'+email, function(err, pass) {
-      return callback(err, pass);
+      if (err) return callback(err, pass);
+      redisClient.get('ptu:env:'+email, function(err, serverEnv) {
+        return callback(err, pass, serverEnv);
+      });
     });
   };
 
@@ -63,10 +66,10 @@ var Verifier = function Verifier(config) {
 
         // Get the user's password.  This will verify that 
         // we are staging this user
-        self._getEmailPassword(data.email, function(err, pass) {
-          if (!err && pass) {
+        self._getEmailPassword(data.email, function(err, pass, serverEnv) {
+          if (!err && pass && serverEnv) {
             // Complete the user creation with browserid
-            wsapi.post(self.config, '/wsapi/complete_user_creation', {}, { 
+            wsapi.post(self.config[serverEnv], '/wsapi/complete_user_creation', {}, { 
               token: data.token,
               pass: pass
             }, function(err, res) {
