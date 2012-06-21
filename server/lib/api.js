@@ -131,7 +131,7 @@ var API = module.exports = function API(config, onready) {
 
         var multi = redisClient.multi();
         multi.zadd('ptu:emails:staging', expires, email);
-        multi.hmset('ptu:email:'+email, {password:password, env:env});
+        multi.hmset('ptu:email:'+email, {password:password, env:serverEnv});
         multi.exec(function(err) {
           if (err) return callback(err);
           bid.createUser(vconf[serverEnv], email, password, function(err) {
