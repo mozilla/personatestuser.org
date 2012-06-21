@@ -40,7 +40,7 @@ vows.describe("API vows")
 .addBatch({
   "getTestUser": {
     topic: function() {
-     api.getTestUser(this.callback);
+      api.getTestUser("prod", this.callback);
     },
 
     "gives us a valid email and password": function(data) {

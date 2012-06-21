@@ -2,22 +2,41 @@ const redis = require('redis'),
       jwcrypto = require('jwcrypto'),
       fs = require('fs'),
       util = require('util'),
+      url = require('url'),
       events = require('events'),
       path = require('path'),
       bid = require('./bid'),
       ALGORITHM = "RS",
       KEYSIZE = 256,
-      DEFAULT_DOMAIN = 'personatestuser.org',
       ONE_HOUR_IN_MS = 60 * 60 * 1000;
 
 // Import the jwcrypto algorithms
 require('jwcrypto/lib/algs/rs');
 require('jwcrypto/lib/algs/ds');
 
+const DEFAULT_DOMAIN =
+  (process.env.PUBLIC_URL ? url.parse(process.env.PUBLIC_URL).hostname :
+   'personatestuser.org');
+
+console.log('my domain is:', DEFAULT_DOMAIN);
+
 var vconf = {
-  browserid: 'https://diresworb.org',
-  verifier: "https://diresworb.org/verify"
+  prod: {
+    browserid: 'https://browserid.org',
+    verifier: "https://browserid.org/verify"
+  },
+  stage: {
+    browserid: 'https://diresworb.org',
+    verifier: "https://diresworb.org/verify"
+  },
+  dev: {
+    browserid: 'https://login.dev.anosrep.org',
+    verifier: "https://verifier.dev.anosrep.org"
+  }
 };
+
+var verifier = new bid.Verifier(vconf);
+verifier.startVerifyingEmails();
 
 // a place to register recently-verified emails.
 var verifiedEmails = {};
@@ -65,6 +84,7 @@ var API = module.exports = function API(config, onready) {
   // ptu:emails:valid   = zset of user emails scored by creation date
   // ptu:email:<email>:password = password for user with given email
   // ptu:email:<email>:session  = session context for bid transactions
+  // ptu:email:<email>:env      = the browserid deployment it uses
   //
   // Emails start their life in staging and, if all goes well, end
   // up in ptu:emails once validated etc.  We cull both zsets
@@ -97,7 +117,7 @@ var API = module.exports = function API(config, onready) {
   // being handled (despite the above 'on error' handler)
   onready(null);
 
-  this.getTestUser = function getTestUser(callback) {
+  this.getTestUser = function getTestUser(serverEnv, callback) {
     // pick a unique username and assign a random password.
     try {
       var name = getRandomName();
@@ -114,9 +134,10 @@ var API = module.exports = function API(config, onready) {
         var multi = redisClient.multi();
         multi.zadd('ptu:emails:staging', expires, email);
         multi.set('ptu:email:'+email+':password', password);
+        multi.set('ptu:email:'+email+':env', serverEnv);
         multi.exec(function(err) {
           if (err) return callback(err);
-          bid.createUser(vconf, email, password, function(err) {
+          bid.createUser(vconf[serverEnv], email, password, function(err) {
             if (err) return callback(err);
 
             // Now check periodically for the email to have appeared in
@@ -158,8 +179,9 @@ var API = module.exports = function API(config, onready) {
   this.deleteTestUser = function deleteTestUser(email, callback) {
     try {
       var multi = redisClient.multi();
-      multi.del('ptu:email:'+email+':password');
+      multi.del('ptu:email:'+email);
       multi.del('ptu:email:'+email+':session');
+      multi.del('ptu:email:'+email+':env');
       multi.zrem('ptu:emails:staging', email);
       multi.zrem('ptu:emails:valid', email);
       return multi.exec(callback);
@@ -223,7 +245,9 @@ var API = module.exports = function API(config, onready) {
           email = results[i];
           multi.del('ptu:email:'+email+':password');
           multi.del('ptu:email:'+email+':session');
+          multi.del('ptu:email:'+email+':env');
           multi.zrem('ptu:emails:valid', email);
+          multi.zrem('ptu:emails:staging', email);
         }
 
         multi.exec(function(err, n) {

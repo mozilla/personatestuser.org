@@ -26,6 +26,8 @@ const express = require('express'),
 var api = new API();
 var app = module.exports = express.createServer();
 
+const allowedEnvs = ['prod','stage','dev'];
+
 var io = socket_io.listen(app);
 io.set('log level', 1);
 
@@ -54,8 +56,15 @@ app.get('/', function(req, res) {
   res.render('index');
 });
 
-app.get('/test_user', function getTestUser(req, res) {
-  api.getTestUser(function(err, user) {
+
+app.get('/test_user/:env?', function getTestUser(req, res) {
+  var serverEnv = req.param('env', 'prod');
+  if (allowedEnvs.indexOf(serverEnv) === -1) {
+    res.writeHead(400);
+    return res.end("env must be one of " + allowedEnvs.join(', '));
+  }
+  
+  api.getTestUser(serverEnv, function(err, user) {
     if (err) {
       res.writeHead(500);
       return res.end();
@@ -102,9 +111,14 @@ io.on('connection', function(socket) {
   socket.on('message', function(data) {
     if (data.method) {
       if (data.method === 'getTestUser') {
-        api.getTestUser(function(err, user) {
-          socket.json.send({err: err, user: user});
-        });
+        var serverEnv = data.env ? data.env : 'prod';
+        if (allowedEnvs.indexOf(serverEnv) === -1) {
+          console.error("Unsupported server environment: " + serverEnv);
+        } else {
+          api.getTestUser(serverEnv, function(err, user) {
+            socket.json.send({err: err, user: user});
+          });
+        }
       } else {
         console.error("Unsupported method: " + data.method);
       }

@@ -2,5 +2,8 @@
   "processes": [
     "server/bin/app",
     "server/bin/email"
-  ]
+  ],
+  "hooks": {
+    "postcreate": "scripts/post_create.sh"
+  }
 }
