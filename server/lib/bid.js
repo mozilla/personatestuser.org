@@ -4,7 +4,7 @@
 
 const util = require('util'),
       events = require('events'),
-      redis = require('redis'),
+      getRedisClient = require('./db').getRedisClient,
       vconf = require('./vconf'),
       wsapi = require('./wsapi_client');
 
@@ -24,7 +24,7 @@ var Verifier = function Verifier() {
   var self = this;
 
   this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (email, expires, callback) {
-    redis.createClient()
+    getRedisClient()
       .multi()
       .zadd('ptu:emails:valid', expires, email)
       .zrem('ptu:emails:staging', email)
@@ -36,7 +36,7 @@ var Verifier = function Verifier() {
   };
 
   this.startVerifyingEmails = function startVerifyingEmails() {
-    redis.createClient().blpop('ptu:mailq', 0, function(err, data) {
+    getRedisClient().blpop('ptu:mailq', 0, function(err, data) {
       // data is a tuple like [qname, data]
       try {
         data = JSON.parse(data[1]);
@@ -51,7 +51,7 @@ var Verifier = function Verifier() {
       if (email && token) {
         // Get the user's password.  This will verify that
         // we are staging this user
-        redisClient.hgetall("ptu:email:"+email, function(err, data) {
+        getRedisClient().hgetall("ptu:email:"+email, function(err, data) {
           var pass = data.password;
           var serverEnv = data.env;
           if (!err && pass && serverEnv) {
@@ -216,7 +216,7 @@ var createUser = function createUser(config, email, pass, callback) {
         // continue our conversation with the server later
         // to get a cert.
 
-        var cli = redis.createClient();
+        var cli = getRedisClient();
         cli.hset('ptu:email:'+email, 'session', JSON.stringify(context), function(err) {
           // Now we wait for an email to return from browserid.
           // The email will be received by bin/email, which will

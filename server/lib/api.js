@@ -1,11 +1,11 @@
-const redis = require('redis'),
-      jwcrypto = require('jwcrypto'),
+const jwcrypto = require('jwcrypto'),
       fs = require('fs'),
       util = require('util'),
       url = require('url'),
       events = require('events'),
       path = require('path'),
       bid = require('./bid'),
+      getRedisClient = require('./db').getRedisClient,
       vconf = require('./vconf'),
       ALGORITHM = "RS",
       KEYSIZE = 256,
@@ -54,12 +54,6 @@ var API = module.exports = function API(config, onready) {
   events.EventEmitter.call(this);
   var self = this;
 
-  // get default config from env
-  config = config || {
-    redis_host: process.env["REDIS_HOST"] || "127.0.0.1",
-    redis_port: parseInt(process.env["REDIS_PORT"] || "6379", 10)
-  };
-
   onready = onready || function() {};
 
   // All our redis keys are prefixed with 'ptu:'
@@ -73,11 +67,8 @@ var API = module.exports = function API(config, onready) {
   // Emails start their life in staging and, if all goes well, end
   // up in ptu:emails once validated etc.  We cull both zsets
   // regularly for expired data.
-  var redisClient = redis.createClient(config.redis_port, config.redis_host);
 
-  redisClient.on('error', function(err) {
-    self.emit('error', "Redis client error: " + err);
-  });
+
 
   // The verifier waits for emails to arrive from the IdP asking the
   // test user to complete the registration steps in ... his? her? its?
@@ -116,14 +107,14 @@ var API = module.exports = function API(config, onready) {
 
       self.emit('message', "Staging new user");
 
-      redisClient.incr('ptu:nextval', function(err, val) {
+      getRedisClient().incr('ptu:nextval', function(err, val) {
         email = name + val + '@' + DEFAULT_DOMAIN;
         var created = (new Date()).getTime();
         var expires = created + ONE_HOUR_IN_MS;
 
         console.log("getTestUser: email = " + email);
 
-        var multi = redisClient.multi();
+        var multi = getRedisClient.multi();
         multi.zadd('ptu:emails:staging', expires, email);
         // save the expiration date in the hash, so we don't have to
         // look it up in the zsets.  Saves a redis call round-trip.
@@ -180,7 +171,7 @@ var API = module.exports = function API(config, onready) {
 
   this.deleteTestUser = function deleteTestUser(email, callback) {
     try {
-      var multi = redisClient.multi();
+      var multi = getRedisClient.multi();
       multi.del('ptu:email:'+email);
       multi.zrem('ptu:emails:staging', email);
       multi.zrem('ptu:emails:valid', email);
@@ -203,7 +194,7 @@ var API = module.exports = function API(config, onready) {
       var now = new Date();
       var expiresAt = new Date(now.getTime() + duration);
 
-      redisClient.get(email, function(err, storedPassword) {
+      getRedisClient.get(email, function(err, storedPassword) {
         if (false && password !== storedPassword) {
           return callback(new Error("Password incorrect"));
         }
@@ -236,33 +227,41 @@ var API = module.exports = function API(config, onready) {
    * Calls back with err, numCulled.
    */
   this._cullOldEmails = function _cullFromStore(age, callback) {
-    var keys = ['ptu:emails:valid', 'ptu:emails:staging'];
-    var multi = redisClient.multi();
+    var cli = getRedisClient();
+    var toCull = {};
     var numCulled = 0;
     var email;
 
-    keys.forEach(function(zkey) {
-      redisClient.zrangebyscore(zkey, '-inf', age, function(err, results) {
-        if (!err && results.length) {
-
-          // for each of the users, delete the password record and remove
-          // it from the emails zset.
-          for (var i in results) {
-            numCulled ++;
-            email = results[i];
-            console.log("culling expired email: " + email);
-            multi.del('ptu:email:'+email);
-            multi.zrem('zkey', email);
-          }
-        }
+    // asynchronously cull the outdated emails in valid and staging
+    cli.getRedisClient.zrangebyscore('ptu:emails:valid', '-inf', age, function(err, results) {
+      if (err) return callback(err);
+      results.forEach(function(email) {
+        toCull[email] = true;
       });
-    });
 
-    multi.exec(function(err) {
-      if (err) {
-        return callback(err);
-      }
-      return callback(null, numCulled);
+      cli.getRedisClient.zrangebyscore('ptu:emails:staging', '-inf', age, function(err, results) {
+        if (err) return callback(err);
+        results.forEach(function(email) {
+          toCull[email] = true;
+        });
+
+        var multi = cli.multi();
+        Object.keys(toCull).forEach(function(email) {
+          multi.del('ptu:email:'+email);
+          multi.zrem('ptu:emails:staging', email);
+          multi.zrem('ptu:emails:valid', email);
+          numCulled ++;
+          console.log("will cull " + email);
+        });
+        multi.exec(function(err, results) {
+          if (err) {
+            return callback(err);
+          } else {
+            console.log("culled " + numCulled + " emails");
+            return callback(null, numCulled);
+          }
+        });
+      });
     });
   };
 
