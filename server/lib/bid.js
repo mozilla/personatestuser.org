@@ -222,11 +222,12 @@ var createUser = function createUser(config, email, pass, callback) {
         // to get a cert.
 
         redisClient.hset('ptu:email:'+email, 'session', JSON.stringify(context), function(err) {
-        // Now we wait for an email to return from browserid.
-        // The email will be received by bin/email, which will
-        // push the email address and token pair into a redis
-        // queue.
-        return callback(err);
+          // Now we wait for an email to return from browserid.
+          // The email will be received by bin/email, which will
+          // push the email address and token pair into a redis
+          // queue.
+          return callback(err);
+        });
       });
     });
   });
