@@ -79,7 +79,7 @@ var API = module.exports = function API(config, onready) {
   //
   // Of course, it's possible that this process may never complete due to
   // network issues, intense solar flare activity, smurfs, etc.  So
-  // getTestUser (below) will timeout and return an error if the email
+  // getVerifiedEmail (below) will timeout and return an error if the email
   // creation has not completed within five seconds.
   var verifier = new bid.Verifier(vconf);
   verifier.startVerifyingEmails();
@@ -95,83 +95,90 @@ var API = module.exports = function API(config, onready) {
   // being handled (despite the above 'on error' handler)
   onready(null);
 
-  this.getTestUser = function getTestUser(serverEnv, callback) {
-    // pick a unique username and assign a random password.
-    try {
-      var name = getRandomName();
-      var password = getRandomPassword();
-      // we will assign the exact email below
-      var email;
+  this.stageNewEmail = function stageNewEmail(serverEnv, callback) {
+    var name = getRandomName();
+    var password = getRandomPassword();
+    // we will assign the exact email below
+    var email;
 
-      console.log("in getTestUser");
+    self.emit('message', "Staging new user");
 
-      self.emit('message', "Staging new user");
-
-      getRedisClient().incr('ptu:nextval', function(err, val) {
-        email = name + val + '@' + DEFAULT_DOMAIN;
-        var created = (new Date()).getTime();
-        var expires = created + ONE_HOUR_IN_MS;
-
-        console.log("getTestUser: email = " + email);
-
-        var multi = getRedisClient.multi();
-        multi.zadd('ptu:emails:staging', expires, email);
-        // save the expiration date in the hash, so we don't have to
-        // look it up in the zsets.  Saves a redis call round-trip.
-        multi.hmset('ptu:email:'+email, {
-                      email: email,
-                      password: password,
-                      env: serverEnv,
-                      expires: expires
-                    });
-        multi.exec(function(err) {
-
-          console.log("getTestUser: stage " + email + " with err =  " +err);
-          if (err) return callback(err);
-          bid.createUser(vconf[serverEnv], email, password, function(err) {
-            console.log("getTestUser: in callback from bid.createUser; err = " + err);
-            if (err) return callback(err);
-
-            // Now check periodically for the email to have appeared in
-            // our verfiedEmails bucket.  Once it is there, we know the
-            // creation process has completed successfully and we can
-            // return an object containing the email, password, and timeout.
-            // If this does not complete within 5 seconds, return error.
-            expectSoon(
-              (function() {
-                self.emit('message', "Verifying new user");
-                return verifiedEmails[email] === true;
-              }),
-              5000, // milliseconds
-              function(it_worked) {
-                if (it_worked) {
-                  console.log("getTestUser: SUCCESS! verified " + email);
-                  self.emit('message', "Verified new user");
-                  // clean up
-                  delete verifiedEmails[email];
-                  return callback(null, {
-                    'email': email,
-                    'password': password,
-                    'expires': expires
-                  });
-                } else {
-                  self.emit('message', "Aw, snap.  User verification timed out.");
-                  return callback("User creation timed out");
-                }
-              }
-            );
-          });
-        });
+    getRedisClient().incr('ptu:nextval', function(err, val) {
+      email = name + val + '@' + DEFAULT_DOMAIN;
+      var expires = (new Date()).getTime() + ONE_HOUR_IN_MS;
+      var data = {
+        email: email,
+        password: password,
+        expires: expires,
+        env: serverEnv
+      };
+      var multi = getRedisClient().multi();
+      multi.zadd('ptu:emails:staging', expires, email);
+      multi.hmset('ptu:email:'+email, data);
+      multi.exec(function(err) {
+        if (err) return callback(err);
+        return callback(null, data);
       });
+    });
+  };
 
-    } catch (err) {
-      return callback(err);
-    }
+  /*
+   * getUnverifiedEmail - get a username and password, and stage it
+   * with our IdP.  Don't complete the user creation; return the
+   * creation url.
+   */
+  this.getUnverifiedEmail = function getUnverifiedEmail(serverEnv, callback) {
+    // stub
+  };
+
+  /*
+   * getVerifiedEmail - stage a new email and password, and verify it
+   * with our IdP.  Callback with the verified email info.  If
+   * verification takes longer than 5 seconds, consider that it's
+   * timed out and call back with an error.
+   */
+  this.getVerifiedEmail = function getVerifiedEmail(serverEnv, callback) {
+    this.stageNewEmail(serverEnv, function(err, data) {
+      if (err) return callback(err);
+      var email = data.email;
+      var password = data.password;
+      var expires = data.expires;
+      bid.createUser(vconf[serverEnv], email, password, function(err) {
+        console.log("getVerifiedUser: in callback from bid.createUser; err = " + err);
+        if (err) return callback(err);
+
+        // Now check periodically for the email to have appeared in
+        // our verfiedEmails bucket.  Once it is there, we know the
+        // creation process has completed successfully and we can
+        // return an object containing the email, password, and timeout.
+        // If this does not complete within 5 seconds, return error.
+        expectSoon(
+          (function() {
+             self.emit('message', "Verifying new user");
+             return verifiedEmails[email] === true;
+           }),
+           5000, // milliseconds
+           function(it_worked) {
+             if (it_worked) {
+               console.log("getVerifiedUser: SUCCESS! verified " + email);
+               self.emit('message', "Verified new user");
+               // clean up
+               delete verifiedEmails[email];
+               return callback(null, data);
+             } else {
+               self.emit('message', "Aw, snap.  User verification timed out.");
+               return callback("User creation timed out");
+             }
+           }
+
+         );
+      });
+    });
   };
 
   this.deleteTestUser = function deleteTestUser(email, callback) {
     try {
-      var multi = getRedisClient.multi();
+      var multi = getRedisClient().multi();
       multi.del('ptu:email:'+email);
       multi.zrem('ptu:emails:staging', email);
       multi.zrem('ptu:emails:valid', email);
@@ -194,7 +201,7 @@ var API = module.exports = function API(config, onready) {
       var now = new Date();
       var expiresAt = new Date(now.getTime() + duration);
 
-      getRedisClient.get(email, function(err, storedPassword) {
+      getRedisClient().get(email, function(err, storedPassword) {
         if (false && password !== storedPassword) {
           return callback(new Error("Password incorrect"));
         }
@@ -233,13 +240,13 @@ var API = module.exports = function API(config, onready) {
     var email;
 
     // asynchronously cull the outdated emails in valid and staging
-    cli.getRedisClient.zrangebyscore('ptu:emails:valid', '-inf', age, function(err, results) {
+    cli.zrangebyscore('ptu:emails:valid', '-inf', age, function(err, results) {
       if (err) return callback(err);
       results.forEach(function(email) {
         toCull[email] = true;
       });
 
-      cli.getRedisClient.zrangebyscore('ptu:emails:staging', '-inf', age, function(err, results) {
+      cli.zrangebyscore('ptu:emails:staging', '-inf', age, function(err, results) {
         if (err) return callback(err);
         results.forEach(function(email) {
           toCull[email] = true;

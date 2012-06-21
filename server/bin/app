@@ -57,21 +57,33 @@ app.get('/', function(req, res) {
 });
 
 
-app.get('/test_user/:env?', function getTestUser(req, res) {
+app.get('/email/verified/:env?', function getVerifiedEmail(req, res) {
   var serverEnv = req.param('env', 'prod');
   if (allowedEnvs.indexOf(serverEnv) === -1) {
     res.writeHead(400);
     return res.end("env must be one of " + allowedEnvs.join(', '));
   }
 
-  api.getTestUser(serverEnv, function(err, user) {
+  api.getVerifiedEmail(serverEnv, function(err, email) {
     if (err) {
       res.writeHead(500);
       return res.end();
     }
     res.contentType('json');
-    return res.end(JSON.stringify(user));
+    return res.end(JSON.stringify(email));
   });
+});
+
+app.get('/email/unverified/:env?', function getUnverifiedEmail(req, res) {
+  return res.end("stub");
+});
+
+app.get('/assertion/:audience/email/:email/password/:password/:env?', function getAssertion(rea, res) {
+  return res.end('stub');
+});
+
+app.get('/assertion/:audience/:env?', function getEmailAndAssertion(req, res) {
+  return res.end('stub');
 });
 
 function _getAssertion(params, req, res) {
