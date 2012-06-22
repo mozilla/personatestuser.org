@@ -50,22 +50,27 @@ app.configure('production', function(){
   app.use(express.errorHandler());
 });
 
+// middleware
+
+function verifyEnv(req, res, next) {
+  var serverEnv = req.param('env', 'prod');
+  if (allowedEnvs.indexOf(serverEnv) === -1) {
+    res.writeHead(400);
+    return res.end("env must be one of " + allowedEnvs.join(', '));
+  } else {
+    req.param['env'] = serverEnv;
+    next();
+  }
+}
+
 // Routes
 
 app.get('/', function(req, res) {
   res.render('index');
 });
 
-// XXX to do - make env check in middleware
-
-app.get('/email/verified/:env?', function getVerifiedEmail(req, res) {
-  var serverEnv = req.param('env', 'prod');
-  if (allowedEnvs.indexOf(serverEnv) === -1) {
-    res.writeHead(400);
-    return res.end("env must be one of " + allowedEnvs.join(', '));
-  }
-
-  api.getVerifiedEmail(serverEnv, function(err, data) {
+app.get('/email/verified/:env?', verifyEnv, function getVerifiedEmail(req, res) {
+  api.getVerifiedEmail(req.param('env'), function(err, data) {
     if (err) {
       res.writeHead(500);
       return res.end();
@@ -75,14 +80,8 @@ app.get('/email/verified/:env?', function getVerifiedEmail(req, res) {
   });
 });
 
-app.get('/email/unverified/:env?', function getUnverifiedEmail(req, res) {
-  var serverEnv = req.param('env', 'prod');
-  if (allowedEnvs.indexOf(serverEnv) === -1) {
-    res.writeHead(400);
-    return res.end("env must be one of " + allowedEnvs.join(', '));
-  }
-
-  api.getUnverifiedEmail(serverEnv, function(err, data) {
+app.get('/email/unverified/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
+  api.getUnverifiedEmail(req.param('env'), function(err, data) {
     if (err) {
       res.writeHead(500);
       return res.end();
@@ -92,11 +91,11 @@ app.get('/email/unverified/:env?', function getUnverifiedEmail(req, res) {
   });
 });
 
-app.get('/assertion/:audience/email/:email/password/:password/:env?', function getAssertion(rea, res) {
+app.get('/assertion/:audience/email/:email/password/:password/:env?', verifyEnv, function getAssertion(rea, res) {
   return res.end('stub');
 });
 
-app.get('/assertion/:audience/:env?', function getEmailAndAssertion(req, res) {
+app.get('/assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
   return res.end('stub');
 });
 

@@ -129,7 +129,7 @@ var API = module.exports = function API(config, onready) {
   this.getUnverifiedEmail = function getUnverifiedEmail(serverEnv, callback) {
     self.generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
-      getRedisClient().hset(data.email, 'do_verify', 0, function(err) {
+      getRedisClient().hset(data.email, 'do_verify', 'no', function(err) {
         if (err) return callback(err);
         expectSoon(
           function() {
@@ -163,35 +163,37 @@ var API = module.exports = function API(config, onready) {
       var email = data.email;
       var password = data.password;
       var expires = data.expires;
-      bid.createUser(vconf[serverEnv], email, password, function(err) {
-        console.log("getVerifiedUser: in callback from bid.createUser; err = " + err);
-        if (err) return callback(err);
+      getRedisClient().hset(data.email, 'do_verify', 'yes', function(err) {
+        bid.createUser(vconf[serverEnv], email, password, function(err) {
+          console.log("getVerifiedUser: in callback from bid.createUser; err = " + err);
+          if (err) return callback(err);
 
-        // Now check periodically for the email to have appeared in
-        // our verfiedEmails bucket.  Once it is there, we know the
-        // creation process has completed successfully and we can
-        // return an object containing the email, password, and timeout.
-        // If this does not complete within 5 seconds, return error.
-        expectSoon(
-          (function() {
-             self.emit('message', "Verifying new user");
-             return availableEmails[email] === true;
-           }),
-           5000, // milliseconds
-           function(it_worked) {
-             if (it_worked) {
-               console.log("getVerifiedUser: SUCCESS! verified " + email);
-               self.emit('message', "Verified new user");
-               // clean up
-               delete availableEmails[email];
-               return callback(null, data);
-             } else {
-               self.emit('message', "Aw, snap.  User verification timed out.");
-               return callback("User creation timed out");
+          // Now check periodically for the email to have appeared in
+          // our verfiedEmails bucket.  Once it is there, we know the
+          // creation process has completed successfully and we can
+          // return an object containing the email, password, and timeout.
+          // If this does not complete within 5 seconds, return error.
+          expectSoon(
+            (function() {
+               self.emit('message', "Verifying new user");
+               return availableEmails[email] === true;
+             }),
+             5000, // milliseconds
+             function(it_worked) {
+               if (it_worked) {
+                 console.log("getVerifiedUser: SUCCESS! verified " + email);
+                 self.emit('message', "Verified new user");
+                 // clean up
+                 delete availableEmails[email];
+                 return callback(null, data);
+               } else {
+                 self.emit('message', "Aw, snap.  User verification timed out.");
+                 return callback("User creation timed out");
+               }
              }
-           }
 
-         );
+           );
+        });
       });
     });
   };

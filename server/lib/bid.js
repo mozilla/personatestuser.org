@@ -91,7 +91,7 @@ var Verifier = function Verifier() {
         var userData = results[1];
 
         // maybe complete user creation
-        if (userData.do_verify === 'yes') {
+        if (userData.do_verify !== 'no') {
           self.completeUserCreation(userData, function(err) {
             if (err) {
               self.emit('error', err);
@@ -167,8 +167,7 @@ var getAddressInfo = function getAddressInfo(config, context, callback) {
 };
 
 var stageUser = function stageUser(config, context, callback) {
-  console.log("bid.stageUser config: " + JSON.stringify(config, null, 2));
-  console.log("bid.stageUser context: " + JSON.stringify(context, null, 2));
+  console.log("bid.stageUser " + context.email);
   wsapi.post(config, '/wsapi/stage_user', context, {
     csrf: context.csrf_token,
     email: context.email,
