@@ -131,7 +131,7 @@ var API = module.exports = function API(config, onready) {
         function(it_worked) {
           if (it_worked) {
             self.emit('message', "Received " + email);
-            getRedisClient().hgetall(email, callback);
+            getRedisClient().hgetall('ptu:email:'+email, callback);
           } else {
             self.emit('error', "Timed out waiting for " + email);
             callback("Timed out waiting for " + email);
@@ -148,7 +148,7 @@ var API = module.exports = function API(config, onready) {
   this.getUnverifiedEmail = function getUnverifiedEmail(serverEnv, callback) {
     self.generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
-      getRedisClient().hset(data.email, 'do_verify', 'no', function(err) {
+      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', 'no', function(err) {
         if (err) return callback(err);
 
         self.waitForEmail(data.email, function(err, emailData) {
@@ -177,7 +177,7 @@ var API = module.exports = function API(config, onready) {
   this.getVerifiedEmail = function getVerifiedEmail(serverEnv, callback) {
     this.generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
-      getRedisClient().hset(data.email, 'do_verify', 'yes', function(err) {
+      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', 'yes', function(err) {
         bid.createUser(vconf[serverEnv], data.email, data.password, function(err) {
           console.log("getVerifiedUser: in callback from bid.createUser; err = " + err);
           if (err) return callback(err);
@@ -213,45 +213,42 @@ var API = module.exports = function API(config, onready) {
     }
   };
 
-  this.getAssertion = function getAssertion(params, callback) {
-    try{
-      var email = params.email;
-      var password = params.password;
-      var audience = params.audience;
-      var duration = params.duration || (60 * 60 * 1000);
-      if (! email && password && audience) {
-        return callback(new Error("required param missing"));
+  this.genKeyPair = function genKeyPair(params, callback) {
+    if (!params.email) {
+      return callback("params missing required email");
+    }
+    jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
+      getRedisClient().hmset('ptu:email:'+params.email, {
+        publicKey: kp.publicKey.serialize(),
+        privateKey: kp.privateKey.serialize()
+      }, function(err) {
+        return callback(err, kp);
+      });
+    });
+  };
+
+  this.getAssertion = function getAssertion(params, audience, callback) {
+    var email = params.email;
+    var password = params.password;
+    var duration = params.duration || (60 * 60 * 1000);
+    if (! email && password && audience) {
+      return callback(new Error("required param missing"));
+    }
+
+    var now = new Date();
+    var expiresAt = new Date(now.getTime() + duration);
+
+    getRedisClient().get(email, function(err, storedPassword) {
+      if (false && password !== storedPassword) {
+        return callback(new Error("Password incorrect"));
       }
 
-      var now = new Date();
-      var expiresAt = new Date(now.getTime() + duration);
-
-      getRedisClient().get(email, function(err, storedPassword) {
-        if (false && password !== storedPassword) {
-          return callback(new Error("Password incorrect"));
-        }
-
-        // XXX wip ...
-        var payload = {foo: "I assert!"};
-
-        jwcrypto.generateKeypair(
-          {algorithm: ALGORITHM, keysize: KEYSIZE},
-          function(err, kp) {
-            if (err) return callback(err);
-            jwcrypto.assertion.sign(
-              payload,
-              {issuer: "personatestuser.org",
-               expiresAt: expiresAt,
-               audience: params.audience},
-              kp.secretKey,
-              function(err, assertion) {
-            return callback(null, {assertion: assertion});
-	      });
+      self.generateKeypair(params, function(err, kp) {
+        bid.certifyKey(email, kp.publicKey, function(err, cert) {
+          return callback(null, cert);
         });
       });
-    } catch (err) {
-      return callback(err);
-    }
+    });
   };
 
   /*

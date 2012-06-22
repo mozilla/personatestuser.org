@@ -96,7 +96,20 @@ app.get('/assertion/:audience/email/:email/password/:password/:env?', verifyEnv,
 });
 
 app.get('/assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
-  return res.end('stub');
+  api.getVerifiedEmail(req.param('env'), function(err, data) {
+    if (err || !data) {
+      res.writeHead(500);
+      return res.end();
+    }
+    api.getAssertion(data, req.param('audience'), function(err, assertion) {
+      if (err || !assertion) {
+        res.writeHead(500);
+        return res.end();
+      }
+      res.contentType('json');
+      return res.end(JSON.stringify({data:data, assertion:assertion}));
+    });
+  });
 });
 
 function _getAssertion(params, req, res) {

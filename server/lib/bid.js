@@ -227,10 +227,32 @@ var createUser = function createUser(config, email, pass, callback) {
   });
 };
 
+var certifyKey = function certifyKey(config, email, pubkey, callback) {
+  console.log("certify key");
+  getRedisClient().hgetall('ptu:email:'+email, function(err, data) {
+    if (err) return callback(err);
+    try {
+      var context = JSON.parse(data.context);
+    } catch (x) {
+      return callback("Bad context field for " + email + ": " +err);
+    }
+    wsapi.post(config, '/wsapi/cert_key', context, {
+      email: email,
+      pubkey: pubkey.serialize(),
+      ephemeral: true
+    }, function(err, res) {
+      console.log("got something.  err = " + err);
+      console.log("                res = " + JSON.stringify(res, null, 2));
+      return callback(null, res);
+    });
+  });
+};
+
 // the individual api calls
 module.exports.getSessionContext = getSessionContext;
 module.exports.getAddressInfo = getAddressInfo;
 module.exports.stageUser = stageUser;
+module.exports.certifyKey = certifyKey;
 
 // higher-level compositions
 module.exports.createUser = createUser;
