@@ -217,34 +217,37 @@ var _getAddressInfo = function _getAddressInfo(config, context, callback) {
   });
 };
 
-var authenticateUser = function authenticateUser(config, context, callback) {
-  console.log("big.authenticate user " + context.email);
-  wsapi.post(config, '/wsapi/authenticate_user', context, {
-    email: context.email,
-    pass: context.pass,
-    ephemeral: true
-  }, function(err, res) {
-    if (res.code !== 200) {
-      return callback("ERROR: authenticateUser: server returned " + res.code);
-    }
+var authenticateUser = function authenticateUser(config, email, pass, callback) {
+  getRedisClient().hget('ptu:email:'+email, 'context', function(err, data) {
+    var context = JSON.parse(data);
+    console.log("bid.authenticate user " + context.email);
+    wsapi.post(config, '/wsapi/authenticate_user', context, {
+      email: email,
+      pass: pass,
+      ephemeral: true
+    }, function(err, res) {
+      if (res.code !== 200) {
+        return callback("ERROR: authenticateUser: server returned " + res.code);
+      }
 
-    var body = JSON.parse(res.body);
-    if (body.success !== true) {
-      return callback("Authentication failed");
-    } else {
-      // Save our updated tokens
-      var set_cookie = res.headers['set-cookie'][0].split("=");
-      var cookieJar = {};
-      var key = 'ptu:email:'+context.email;
-      cookieJar[set_cookie[0]] = set_cookie[1];
-      context.cookieJar = cookieJar;
-      var multi = getRedisClient().multi();
-      multi.hset(key, 'userid', body.userid);
-      multi.hset(key, 'context', JSON.stringify(context));
-      multi.exec(function(err, result) {
-        return callback(err);
-      });
-    }
+      var body = JSON.parse(res.body);
+      if (body.success !== true) {
+        return callback("Authentication failed");
+      } else {
+        // Save our updated tokens
+        var set_cookie = res.headers['set-cookie'][0].split("=");
+        var cookieJar = {};
+        var key = 'ptu:email:'+context.email;
+        cookieJar[set_cookie[0]] = set_cookie[1];
+        context.cookieJar = cookieJar;
+        var multi = getRedisClient().multi();
+        multi.hset(key, 'userid', body.userid);
+        multi.hset(key, 'context', JSON.stringify(context));
+        multi.exec(function(err, result) {
+          return callback(err);
+        });
+      }
+    });
   });
 };
 
@@ -336,6 +339,7 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
 // the individual api calls
 module.exports.getSessionContext = getSessionContext;
 module.exports.stageUser = stageUser;
+module.exports.authenticateUser = authenticateUser;
 module.exports.certifyKey = certifyKey;
 
 // higher-level compositions

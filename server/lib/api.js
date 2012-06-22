@@ -143,7 +143,7 @@ var API = module.exports = function API(config, onready) {
   this._getEmail = function _getEmail(serverEnv, do_verify, callback) {
     self._generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
-      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', do_verifyg, function(err) {
+      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', do_verify, function(err) {
         if (err) return callback(err);
         bid.createUser(vconf[serverEnv], data.email, data.pass, function(err) {
           if (err) {
@@ -165,7 +165,7 @@ var API = module.exports = function API(config, onready) {
     if (!params.email) {
       return callback("params missing required email");
     }
-    jwcrypto._generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
+    jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
       getRedisClient().hmset('ptu:email:'+params.email, {
         publicKey: kp.publicKey.serialize(),
         secretKey: kp.secretKey.serialize()
