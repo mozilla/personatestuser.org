@@ -186,7 +186,7 @@ var API = module.exports = function API(config, onready) {
    */
   this.getVerifiedEmail = function getVerifiedEmail(serverEnv, callback) {
     this._getEmail(serverEnv, function(err, email) {
-      self.waitForEmail(data.email, function(err, emailData) {
+      self.waitForEmail(email, function(err, emailData) {
         if (err) {
           return callback(err);
         } else {
