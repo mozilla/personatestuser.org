@@ -140,30 +140,40 @@ var API = module.exports = function API(config, onready) {
     );
   };
 
+  this._getEmail = function _getEmail(serverEnv, callback) {
+    self.generateNewEmail(serverEnv, function(err, data) {
+      if (err) return callback(err);
+      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', 'no', function(err1) {
+        bid.createUser(vconf[serverEnv], data.email, data.password, function(err2) {
+          if (err1 || err2) {
+            return callback(err1 || err2);
+          } else {
+            return callback(null, data.email);
+          }
+        });
+      });
+    });
+  };
+
   /*
    * getUnverifiedEmail - get a username and password, and stage it
    * with our IdP.  Don't complete the user creation; return the
    * creation url.
    */
   this.getUnverifiedEmail = function getUnverifiedEmail(serverEnv, callback) {
-    self.generateNewEmail(serverEnv, function(err, data) {
-      if (err) return callback(err);
-      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', 'no', function(err) {
-        if (err) return callback(err);
-
-        self.waitForEmail(data.email, function(err, emailData) {
-          if (err) {
-            return callback(err);
-          } else {
-            return callback(null, {
-              email: emailData.email,
-              password: emailData.password,
-              token: emailData.token,
-              expires: emailData.expires,
-              env: emailData.env
-            });
-          }
-        });
+    this._getEmail(serverEnv, function(err, email) {
+      self.waitForEmail(email, function(err, emailData) {
+        if (err) {
+          return callback(err);
+        } else {
+          return callback(null, {
+            email: emailData.email,
+            password: emailData.password,
+            token: emailData.token,
+            expires: emailData.expires,
+            env: emailData.env
+          });
+        }
       });
     });
   };
@@ -175,28 +185,20 @@ var API = module.exports = function API(config, onready) {
    * timed out and call back with an error.
    */
   this.getVerifiedEmail = function getVerifiedEmail(serverEnv, callback) {
-    this.generateNewEmail(serverEnv, function(err, data) {
-      if (err) return callback(err);
-      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', 'yes', function(err) {
-        bid.createUser(vconf[serverEnv], data.email, data.password, function(err) {
-          console.log("getVerifiedUser: in callback from bid.createUser; err = " + err);
-          if (err) return callback(err);
-
-          self.waitForEmail(data.email, function(err, emailData) {
-            if (err) {
-              return callback(err);
-            } else {
-              // With a verified email, we don't send back the
-              // already-used verification token.
-              return callback(null, {
-                email: emailData.email,
-                password: emailData.password,
-                expires: emailData.expires,
-                env: emailData.env
-              });
-            }
+    this._getEmail(serverEnv, function(err, email) {
+      self.waitForEmail(data.email, function(err, emailData) {
+        if (err) {
+          return callback(err);
+        } else {
+          // With a verified email, we don't send back the
+          // already-used verification token.
+          return callback(null, {
+            email: emailData.email,
+            password: emailData.password,
+            expires: emailData.expires,
+            env: emailData.env
           });
-        });
+        }
       });
     });
   };
