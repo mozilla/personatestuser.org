@@ -41,7 +41,7 @@ var Verifier = function Verifier() {
     var err = null;
     wsapi.post(vconf[userData.env], '/wsapi/complete_user_creation', {}, {
       token: userData.token,
-      pass: userData.password
+      pass: userData.pass
     }, function(err, res) {
       if (res.code !== 200) {
         err = "Server returned " + res.code;
@@ -221,15 +221,31 @@ var authenticateUser = function authenticateUser(config, context, callback) {
   console.log("big.authenticate user " + context.email);
   wsapi.post(config, '/wsapi/authenticate_user', context, {
     email: context.email,
-    pass: context.password,
+    pass: context.pass,
     ephemeral: true
   }, function(err, res) {
     if (res.code !== 200) {
       return callback("ERROR: authenticateUser: server returned " + res.code);
     }
-    return callback(null, res);
-  });
 
+    var body = JSON.parse(res.body);
+    if (body.success !== true) {
+      return callback("Authentication failed");
+    } else {
+      // Save our updated tokens
+      var set_cookie = res.headers['set-cookie'][0].split("=");
+      var cookieJar = {};
+      var key = 'ptu:email:'+context.email;
+      cookieJar[set_cookie[0]] = set_cookie[1];
+      context.cookieJar = cookieJar;
+      var multi = getRedisClient().multi();
+      multi.hset(key, 'userid', body.userid);
+      multi.hset(key, 'context', JSON.stringify(context));
+      multi.exec(function(err, result) {
+        return callback(err);
+      });
+    }
+  });
 };
 
 var stageUser = function stageUser(config, context, callback) {
@@ -294,19 +310,17 @@ var createUser = function createUser(config, email, pass, callback) {
 };
 
 var certifyKey = function certifyKey(config, email, pubkey, callback) {
-  console.log("certify key");
   getRedisClient().hgetall('ptu:email:'+email, function(err, data) {
     if (err) return callback(err);
     try {
       var context = JSON.parse(data.context);
-      console.log("call certify key with context: " + JSON.stringify(context, null, 2));
     } catch (x) {
       return callback("Bad context field for " + email + ": " +err);
     }
     wsapi.post(config, '/wsapi/cert_key', context, {
       email: email,
       pubkey: pubkey.serialize(),
-      ephemeral: true
+      ephemeral: false
     }, function(err, res) {
       console.log("cert_key returned err " + err);
       if (err) {

@@ -98,7 +98,7 @@ var API = module.exports = function API(config, onready) {
 
   this._generateNewEmail = function _generateNewEmail(serverEnv, callback) {
     var name = getRandomName();
-    var password = getRandomPassword();
+    var pass = getRandomPassword();
     // we will assign the exact email below
     var email;
 
@@ -107,7 +107,7 @@ var API = module.exports = function API(config, onready) {
       var expires = (new Date()).getTime() + ONE_HOUR_IN_MS;
       var data = {
         email: email,
-        password: password,
+        pass: pass,
         expires: expires,
         env: serverEnv
       };
@@ -143,9 +143,9 @@ var API = module.exports = function API(config, onready) {
   this._getEmail = function _getEmail(serverEnv, do_verify, callback) {
     self._generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
-      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', do_verify, function(err) {
+      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', do_verifyg, function(err) {
         if (err) return callback(err);
-        bid.createUser(vconf[serverEnv], data.email, data.password, function(err) {
+        bid.createUser(vconf[serverEnv], data.email, data.pass, function(err) {
           if (err) {
             return callback(err);
           } else {
@@ -189,7 +189,7 @@ var API = module.exports = function API(config, onready) {
         } else {
           return callback(null, {
             email: emailData.email,
-            password: emailData.password,
+            pass: emailData.pass,
             token: emailData.token,
             expires: emailData.expires,
             env: emailData.env
@@ -216,7 +216,7 @@ var API = module.exports = function API(config, onready) {
           // already-used verification token.
           return callback(null, {
             email: emailData.email,
-            password: emailData.password,
+            pass: emailData.pass,
             expires: emailData.expires,
             env: emailData.env
           });
@@ -239,10 +239,10 @@ var API = module.exports = function API(config, onready) {
 
   this.getAssertion = function getAssertion(params, audience, callback) {
     var email = params.email;
-    var password = params.password;
+    var pass = params.pass;
     var duration = params.duration || (60 * 60 * 1000);
     var serverEnv = vconf[params.env];
-    if (! (email && password && audience && serverEnv)) {
+    if (! (email && pass && audience && serverEnv)) {
       return callback(new Error("required param missing"));
     }
 
@@ -250,13 +250,15 @@ var API = module.exports = function API(config, onready) {
     var expiresAt = new Date(now.getTime() + duration);
 
     getRedisClient().hgetall('ptu:email:'+email, function(err, userData) {
-      if (password !== userData.password) {
-        return callback(new Error("Password incorrect"));
+      if ((!userData) || (pass !== userData.pass)) {
+        return callback(new Error("Email and password don't match"));
       }
 
       self._generateKeypair(params, function(err, kp) {
-        bid.certifyKey(serverEnv, email, kp.publicKey, function(err, cert) {
-          return callback(null, cert);
+        bid.authenticateUser(serverEnv, email, pass, function(err) {
+          bid.certifyKey(serverEnv, email, kp.publicKey, function(err, cert) {
+            return callback(null, cert);
+          });
         });
       });
     });
