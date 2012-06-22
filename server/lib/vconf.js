@@ -11,6 +11,9 @@ module.exports = {
     browserid: 'https://login.dev.anosrep.org',
     verifier: "https://verifier.dev.anosrep.org"
   },
+
+  // For testing, run browserid on localhost
+  // XXX not complete - email delivery
   local: {
     browserid: 'http://localhost:10007/',
     verifier: 'http://localhost:10002/'

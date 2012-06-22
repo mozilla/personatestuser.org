@@ -60,7 +60,7 @@ var Verifier = function Verifier() {
    * culled from the db.  To be nice, we delete these from the
    * provider.
    */
-  this.startDeletingExpiredEmails = function startDeletingExpiredEmails() {
+  this._startDeletingExpiredEmails = function _startDeletingExpiredEmails() {
     var cli = getRedisClient();
     cli.blpop('ptu:expired', 0, function(err, data) {
       // data is a tuple like [qname, data]
@@ -71,16 +71,16 @@ var Verifier = function Verifier() {
         var email = parts[1];
         console.log("this is where we would delete " + email + " from " + env);
       } catch (err) {
-        console.log("ERROR: startDeletingExpiredEmails: " + err);
+        console.log("ERROR: _startDeletingExpiredEmails: " + err);
       }
 
       // Don't flood the server with account deletions.  No more than
       // one per second.
-      setTimeout(self.startDeletingEmails, 1000);
+      setTimeout(self._startDeletingExpiredEmails, 1000);
     });
   };
 
-  this.startVerifyingEmails = function startVerifyingEmails() {
+  this._startVerifyingEmails = function _startVerifyingEmails() {
     var cli = getRedisClient();
 
     cli.blpop('ptu:mailq', 0, function(err, data) {
@@ -90,7 +90,7 @@ var Verifier = function Verifier() {
       } catch (err) {
         // bogus email
         console.log("bogus email data; start verifying again");
-        self.startVerifyingEmails();
+        self._startVerifyingEmails();
         return;
       }
 
@@ -98,7 +98,7 @@ var Verifier = function Verifier() {
       var token = data.token;
       if (! (email && token)) {
         console.log("both email and token not provided: " + data);
-        self.startVerifyingEmails();
+        self._startVerifyingEmails();
         return;
       }
 
@@ -110,7 +110,7 @@ var Verifier = function Verifier() {
       multi.exec(function(err, results) {
         if (err || results.length < 2) {
           console.log("couldn't store token and retrieve user data");
-          self.startVerifyingEmails();
+          self._startVerifyingEmails();
           return;
         }
         var userData = results[1];
@@ -123,18 +123,18 @@ var Verifier = function Verifier() {
             } else {
               self.emit('user-ready', email, null);
             }
-            self.startVerifyingEmails();
+            self._startVerifyingEmails();
           });
         } else {
           self.emit('user-ready', email, token);
-          self.startVerifyingEmails();
+          self._startVerifyingEmails();
         }
       });
     });
   };
 
-  this.startDeletingExpiredEmails();
-  this.startVerifyingEmails();
+  this._startDeletingExpiredEmails();
+  this._startVerifyingEmails();
   return this;
 };
 
