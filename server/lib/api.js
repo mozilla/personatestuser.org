@@ -60,7 +60,7 @@ var API = module.exports = function API(config, onready) {
   // ptu:email:<email>  = hash containing most or all of:
   //                      email     the redis email key
   //                      password  password for email account
-  //                      session   IdP session (JSON string)
+  //                      context   IdP wsapi context (JSON string)
   //                      token     verifier token (JSON string)
   //                      env       server env (prod, dev, stage)
   //                      do_verify flag
@@ -122,9 +122,9 @@ var API = module.exports = function API(config, onready) {
   };
 
   this._waitForEmail = function _waitForEmail(email, callback) {
+    self.emit('message', "Awaiting " + email + " ...");
     expectSoon(
       function() {
-        self.emit('message', "Awaiting " + email);
           return (!! self.availableEmails[email]);
         },
         5000, // milliseconds,

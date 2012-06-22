@@ -96,7 +96,7 @@ pre, code {
   font-weight: 400;
   font-size: 12px;
   padding: 4px;
-  margin: 2px;
+  margin: 0px;
 }
 
 pre {
@@ -233,7 +233,7 @@ a.function {
   text-decoration: none;
   text-align: center;
   line-height: 1.67em;
-  min-width: 14em;
+  padding: 2px 5px;
   outline: none;
   font-size: .9em;
   -moz-border-radius: .3em;

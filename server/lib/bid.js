@@ -37,7 +37,7 @@ var Verifier = function Verifier() {
       });
   };
 
-  this.completeUserCreation = function(userData, callback) {
+  this.completeUserCreation = function completeUserCreation(userData, callback) {
     var err = null;
     wsapi.post(vconf[userData.env], '/wsapi/complete_user_creation', {}, {
       token: userData.token,
@@ -55,12 +55,24 @@ var Verifier = function Verifier() {
     });
   };
 
+  this.cancelAccount = function cancelAccount(email, serverEnv, callback) {
+    getRedisClient().hget('ptu:email:'+email, 'context', function(err, context) {
+      console.log("cancel account " + email + " cookieJar=" + JSON.stringify(context.cookieJar));
+      wsapi.post(vconf[serverEnv], '/wsapi/account_cancel', context, {}, function(err, res) {
+        if (res.code !== 200) {
+          return callback("ERROR: cancelAccount: server returned status " + res.code);
+        }
+        return callback(null);
+      });
+    });
+  };
+
   /*
    * Keep an eye on the ptu:expired queue for emails that have been
    * culled from the db.  To be nice, we delete these from the
    * provider.
    */
-  this._startDeletingExpiredEmails = function _startDeletingExpiredEmails() {
+  this._startCancelingExpiredEmails = function _startCancelingExpiredEmails() {
     var cli = getRedisClient();
     cli.blpop('ptu:expired', 0, function(err, data) {
       // data is a tuple like [qname, data]
@@ -69,14 +81,14 @@ var Verifier = function Verifier() {
         var parts = data[1].split(",");
         var env = parts[0];
         var email = parts[1];
-        console.log("this is where we would delete " + email + " from " + env);
+        self.cancelAccount(email, env);
       } catch (err) {
-        console.log("ERROR: _startDeletingExpiredEmails: " + err);
+        console.log("ERROR: _startCancelingExpiredEmails: " + err);
       }
 
       // Don't flood the server with account deletions.  No more than
       // one per second.
-      setTimeout(self._startDeletingExpiredEmails, 1000);
+      setTimeout(self._startCancelingExpiredEmails, 1000);
     });
   };
 
@@ -133,7 +145,7 @@ var Verifier = function Verifier() {
     });
   };
 
-  this._startDeletingExpiredEmails();
+  this._startCancelingExpiredEmails();
   this._startVerifyingEmails();
   return this;
 };
@@ -169,10 +181,16 @@ var getSessionContext = function getSessionContext(config, context, callback) {
     //  csrf_token, not csrf
 
     var session = JSON.parse(res.body);
-    for (var key in session) {
-      context[key] = session[key];
+    if (!context.session) {
+      context.session = {};
     }
+    for (var key in session) {
+      console.log(key + " = " + JSON.stringify(session[key]));
+      context.session[key] = session[key];
+    }
+
     console.log("context updated with session_context response");
+    console.log(JSON.stringify(context, null, 2));
 
     return callback(null, res);
   });
@@ -202,7 +220,7 @@ var getAddressInfo = function getAddressInfo(config, context, callback) {
 var stageUser = function stageUser(config, context, callback) {
   console.log("bid.stageUser " + context.email);
   wsapi.post(config, '/wsapi/stage_user', context, {
-    csrf: context.csrf_token,
+    csrf: context.session.csrf_token,
     email: context.email,
     pass: context.pass,
     site: context.site
@@ -248,7 +266,7 @@ var createUser = function createUser(config, email, pass, callback) {
         // to get a cert.
 
         var cli = getRedisClient();
-        cli.hset('ptu:email:'+email, 'session', JSON.stringify(context), function(err) {
+        cli.hset('ptu:email:'+email, 'context', JSON.stringify(context), function(err) {
           // Now we wait for an email to return from browserid.
           // The email will be received by bin/email, which will
           // push the email address and token pair into a redis
@@ -265,7 +283,8 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
   getRedisClient().hgetall('ptu:email:'+email, function(err, data) {
     if (err) return callback(err);
     try {
-      var context = JSON.parse(data.session);
+      var context = JSON.parse(data.context);
+      console.log("call certify key with context: " + JSON.stringify(context, null, 2));
     } catch (x) {
       return callback("Bad context field for " + email + ": " +err);
     }
@@ -274,6 +293,7 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
       pubkey: pubkey.serialize(),
       ephemeral: true
     }, function(err, res) {
+      console.log("cert_key returned err " + err);
       if (err) {
         console.log("ERROR: certifyKey: " + err);
         return callback(err);
