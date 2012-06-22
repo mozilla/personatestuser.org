@@ -54,6 +54,7 @@ var API = module.exports = function API(config, onready) {
   //
   // ptu:nextval        = an iterator
   // ptu:mailq          = a list used as a queue from the mail daemon
+  // ptu:expired        = a list of expired emails and their domains
   // ptu:emails:staging = zset of user emails scored by creation date
   // ptu:emails:valid   = zset of user emails scored by creation date
   // ptu:email:<email>  = hash containing most or all of:
@@ -83,7 +84,6 @@ var API = module.exports = function API(config, onready) {
   // creation has not completed within five seconds.
   this.verifier = new bid.Verifier(vconf);
   this.availableEmails = {};
-  this.verifier.startVerifyingEmails();
   this.verifier.on('error', function(err) {
     console.log("Verifier ERROR: " + err);
   });
@@ -96,7 +96,7 @@ var API = module.exports = function API(config, onready) {
   // being handled (despite the above 'on error' handler)
   onready(null);
 
-  this.generateNewEmail = function generateNewEmail(serverEnv, callback) {
+  this._generateNewEmail = function _generateNewEmail(serverEnv, callback) {
     var name = getRandomName();
     var password = getRandomPassword();
     // we will assign the exact email below
@@ -121,7 +121,7 @@ var API = module.exports = function API(config, onready) {
     });
   };
 
-  this.waitForEmail = function waitForEmail(email, callback) {
+  this._waitForEmail = function _waitForEmail(email, callback) {
     expectSoon(
       function() {
         self.emit('message', "Awaiting " + email);
@@ -141,16 +141,36 @@ var API = module.exports = function API(config, onready) {
   };
 
   this._getEmail = function _getEmail(serverEnv, callback) {
-    self.generateNewEmail(serverEnv, function(err, data) {
+    self._generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
-      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', 'no', function(err1) {
-        bid.createUser(vconf[serverEnv], data.email, data.password, function(err2) {
-          if (err1 || err2) {
-            return callback(err1 || err2);
+      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', 'no', function(err) {
+        if (err) return callback(err);
+        bid.createUser(vconf[serverEnv], data.email, data.password, function(err) {
+          if (err) {
+            return callback(err);
           } else {
             return callback(null, data.email);
           }
         });
+      });
+    });
+  };
+
+  /*
+   * _generateKeypair: get a publicKey and secretKey pair for the
+   * email given in the params.  The keys are serialized and stored in
+   * redis along with the rest of the email's data.
+   */
+  this._generateKeypair = function genKeyPair(params, callback) {
+    if (!params.email) {
+      return callback("params missing required email");
+    }
+    jwcrypto._generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
+      getRedisClient().hmset('ptu:email:'+params.email, {
+        publicKey: kp.publicKey.serialize(),
+        secretKey: kp.secretKey.serialize()
+      }, function(err) {
+        return callback(err, kp);
       });
     });
   };
@@ -162,7 +182,8 @@ var API = module.exports = function API(config, onready) {
    */
   this.getUnverifiedEmail = function getUnverifiedEmail(serverEnv, callback) {
     this._getEmail(serverEnv, function(err, email) {
-      self.waitForEmail(email, function(err, emailData) {
+      if (err) return callback(err);
+      self._waitForEmail(email, function(err, emailData) {
         if (err) {
           return callback(err);
         } else {
@@ -186,7 +207,8 @@ var API = module.exports = function API(config, onready) {
    */
   this.getVerifiedEmail = function getVerifiedEmail(serverEnv, callback) {
     this._getEmail(serverEnv, function(err, email) {
-      self.waitForEmail(email, function(err, emailData) {
+      if (err) return callback(err);
+      self._waitForEmail(email, function(err, emailData) {
         if (err) {
           return callback(err);
         } else {
@@ -215,20 +237,6 @@ var API = module.exports = function API(config, onready) {
     }
   };
 
-  this.generateKeypair = function genKeyPair(params, callback) {
-    if (!params.email) {
-      return callback("params missing required email");
-    }
-    jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
-      getRedisClient().hmset('ptu:email:'+params.email, {
-        publicKey: kp.publicKey.serialize(),
-        secretKey: kp.secretKey.serialize()
-      }, function(err) {
-        return callback(err, kp);
-      });
-    });
-  };
-
   this.getAssertion = function getAssertion(params, audience, callback) {
     var email = params.email;
     var password = params.password;
@@ -246,7 +254,7 @@ var API = module.exports = function API(config, onready) {
         return callback(new Error("Password incorrect"));
       }
 
-      self.generateKeypair(params, function(err, kp) {
+      self._generateKeypair(params, function(err, kp) {
         bid.certifyKey(serverEnv, email, kp.publicKey, function(err, cert) {
           return callback(null, cert);
         });
@@ -254,72 +262,6 @@ var API = module.exports = function API(config, onready) {
     });
   };
 
-  /*
-   * Utility function for periodicallyCullUsers
-   * Calls back with err, numCulled.
-   */
-  this._cullOldEmails = function _cullFromStore(age, callback) {
-    var cli = getRedisClient();
-    var toCull = {};
-    var numCulled = 0;
-    var email;
-
-    // asynchronously cull the outdated emails in valid and staging
-    cli.zrangebyscore('ptu:emails:valid', '-inf', age, function(err, results) {
-      if (err) return callback(err);
-      results.forEach(function(email) {
-        toCull[email] = true;
-      });
-
-      cli.zrangebyscore('ptu:emails:staging', '-inf', age, function(err, results) {
-        if (err) return callback(err);
-        results.forEach(function(email) {
-          toCull[email] = true;
-        });
-
-        var multi = cli.multi();
-        Object.keys(toCull).forEach(function(email) {
-          multi.del('ptu:email:'+email);
-          multi.zrem('ptu:emails:staging', email);
-          multi.zrem('ptu:emails:valid', email);
-          numCulled ++;
-          console.log("will cull " + email);
-        });
-        multi.exec(function(err, results) {
-          if (err) {
-            return callback(err);
-          } else {
-            if (numCulled) console.log("culled " + numCulled + " emails");
-            return callback(null, numCulled);
-          }
-        });
-      });
-    });
-  };
-
-  this.periodicallyCullUsers = function periodicallyCullUsers(interval) {
-    var self = this;
-
-    // by default, cull every minute
-    interval = interval || 60000;
-
-    // make sure this only gets called once
-    if (this.cullingUsers === true) return;
-    this.cullingUsers = true;
-
-    function cullUsers() {
-      var now = (new Date()).getTime();
-      var one_hour_ago = now - (60 *60);
-
-      self._cullOldEmails(one_hour_ago, function(err, n) {
-        setTimeout(cullUsers, interval);
-      });
-    }
-
-    cullUsers();
-  };
-
-  this.periodicallyCullUsers();
   return this;
 };
 util.inherits(API, events.EventEmitter);

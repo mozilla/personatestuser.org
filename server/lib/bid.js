@@ -55,6 +55,31 @@ var Verifier = function Verifier() {
     });
   };
 
+  /*
+   * Keep an eye on the ptu:expired queue for emails that have been
+   * culled from the db.  To be nice, we delete these from the
+   * provider.
+   */
+  this.startDeletingExpiredEmails = function startDeletingExpiredEmails() {
+    var cli = getRedisClient();
+    cli.blpop('ptu:expired', 0, function(err, data) {
+      // data is a tuple like [qname, data]
+      // where data contains the email and the env for the email
+      try {
+        var parts = data[1].split(",");
+        var env = parts[0];
+        var email = parts[1];
+        console.log("this is where we would delete " + email + " from " + env);
+      } catch (err) {
+        console.log("ERROR: startDeletingExpiredEmails: " + err);
+      }
+
+      // Don't flood the server with account deletions.  No more than
+      // one per second.
+      setTimeout(self.startDeletingEmails, 1000);
+    });
+  };
+
   this.startVerifyingEmails = function startVerifyingEmails() {
     var cli = getRedisClient();
 
@@ -108,6 +133,8 @@ var Verifier = function Verifier() {
     });
   };
 
+  this.startDeletingExpiredEmails();
+  this.startVerifyingEmails();
   return this;
 };
 
@@ -119,9 +146,13 @@ var getSessionContext = function getSessionContext(config, context, callback) {
 
   wsapi.get(config, '/wsapi/session_context', context, {
   }, function(err, res) {
-    if (err) return callback(err);
+    if (err) {
+      console.log("ERROR: getSessionContext: " + err);
+      return callback(err);
+    }
 
     if (res.code !== 200) {
+      console.log("ERROR: getSessionContext: server status: " + res.code);
       return callback(new Error("Can't get session context: server status " + res.code));
     }
 
@@ -154,8 +185,10 @@ var getAddressInfo = function getAddressInfo(config, context, callback) {
   wsapi.get(config, '/wsapi/address_info', context, {
     email: context.email
   }, function(err, res) {
-    if (err) return callback(err);
-
+    if (err) {
+      console.log("ERROR: getAddressInfo: " + err);
+      return callback(err);
+    }
     if (res.code !== 200) {
       return callback(new Error("Can't get address info: server status " + res.code));
     }
@@ -175,7 +208,7 @@ var stageUser = function stageUser(config, context, callback) {
     site: context.site
   }, function(err, res) {
     if (err || res.code !== 200) {
-      console.log("stageUser: err=" + err + ", code=" + res.code);
+      console.log("ERROR: stageUser: err=" + err + ", server code=" + res.code);
     }
     if (err) return callback(err);
 
@@ -241,7 +274,10 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
       pubkey: pubkey.serialize(),
       ephemeral: true
     }, function(err, res) {
-      console.log("got something.  err = " + err);
+      if (err) {
+        console.log("ERROR: certifyKey: " + err);
+        return callback(err);
+      }
       console.log("                res = " + JSON.stringify(res, null, 2));
       return callback(null, res);
     });
