@@ -21,12 +21,13 @@
 const express = require('express'),
       path = require('path'),
       socket_io = require('socket.io'),
+      vconf = require('../lib/vconf'),
       API = require('../lib/api');
 
 var api = new API();
 var app = module.exports = express.createServer();
 
-const allowedEnvs = ['prod','stage','dev'];
+const allowedEnvs = Object.keys(vconf);
 
 var io = socket_io.listen(app);
 io.set('log level', 1);
