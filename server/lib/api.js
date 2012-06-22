@@ -140,10 +140,10 @@ var API = module.exports = function API(config, onready) {
     );
   };
 
-  this._getEmail = function _getEmail(serverEnv, callback) {
+  this._getEmail = function _getEmail(serverEnv, do_verify, callback) {
     self._generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
-      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', 'no', function(err) {
+      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', do_verify, function(err) {
         if (err) return callback(err);
         bid.createUser(vconf[serverEnv], data.email, data.password, function(err) {
           if (err) {
@@ -181,7 +181,7 @@ var API = module.exports = function API(config, onready) {
    * creation url.
    */
   this.getUnverifiedEmail = function getUnverifiedEmail(serverEnv, callback) {
-    this._getEmail(serverEnv, function(err, email) {
+    this._getEmail(serverEnv, 'no', function(err, email) {
       if (err) return callback(err);
       self._waitForEmail(email, function(err, emailData) {
         if (err) {
@@ -206,7 +206,7 @@ var API = module.exports = function API(config, onready) {
    * timed out and call back with an error.
    */
   this.getVerifiedEmail = function getVerifiedEmail(serverEnv, callback) {
-    this._getEmail(serverEnv, function(err, email) {
+    this._getEmail(serverEnv, 'yes', function(err, email) {
       if (err) return callback(err);
       self._waitForEmail(email, function(err, emailData) {
         if (err) {

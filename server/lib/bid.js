@@ -196,7 +196,7 @@ var getSessionContext = function getSessionContext(config, context, callback) {
   });
 };
 
-var getAddressInfo = function getAddressInfo(config, context, callback) {
+var _getAddressInfo = function _getAddressInfo(config, context, callback) {
   // I don't know if we care about the address info ...
   // Modify @context in place
 
@@ -204,7 +204,7 @@ var getAddressInfo = function getAddressInfo(config, context, callback) {
     email: context.email
   }, function(err, res) {
     if (err) {
-      console.log("ERROR: getAddressInfo: " + err);
+      console.log("ERROR: _getAddressInfo: " + err);
       return callback(err);
     }
     if (res.code !== 200) {
@@ -215,6 +215,21 @@ var getAddressInfo = function getAddressInfo(config, context, callback) {
 
     return callback(null, res);
   });
+};
+
+var authenticateUser = function authenticateUser(config, context, callback) {
+  console.log("big.authenticate user " + context.email);
+  wsapi.post(config, '/wsapi/authenticate_user', context, {
+    email: context.email,
+    pass: context.password,
+    ephemeral: true
+  }, function(err, res) {
+    if (res.code !== 200) {
+      return callback("ERROR: authenticateUser: server returned " + res.code);
+    }
+    return callback(null, res);
+  });
+
 };
 
 var stageUser = function stageUser(config, context, callback) {
@@ -255,7 +270,7 @@ var createUser = function createUser(config, email, pass, callback) {
   getSessionContext(config, context, function(err) {
     if (err) return callback(err);
 
-    getAddressInfo(config, context, function(err) {
+    _getAddressInfo(config, context, function(err) {
       if (err) return callback(err);
 
       stageUser(config, context, function(err) {
@@ -306,7 +321,6 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
 
 // the individual api calls
 module.exports.getSessionContext = getSessionContext;
-module.exports.getAddressInfo = getAddressInfo;
 module.exports.stageUser = stageUser;
 module.exports.certifyKey = certifyKey;
 
