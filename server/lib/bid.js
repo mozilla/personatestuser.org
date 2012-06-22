@@ -232,7 +232,7 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
   getRedisClient().hgetall('ptu:email:'+email, function(err, data) {
     if (err) return callback(err);
     try {
-      var context = JSON.parse(data.context);
+      var context = JSON.parse(data.session);
     } catch (x) {
       return callback("Bad context field for " + email + ": " +err);
     }

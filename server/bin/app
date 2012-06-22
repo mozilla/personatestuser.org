@@ -58,6 +58,7 @@ function verifyEnv(req, res, next) {
     res.writeHead(400);
     return res.end("env must be one of " + allowedEnvs.join(', '));
   } else {
+    // XXX apparently this assignment doens't work
     req.param['env'] = serverEnv;
     next();
   }
@@ -70,7 +71,7 @@ app.get('/', function(req, res) {
 });
 
 app.get('/email/verified/:env?', verifyEnv, function getVerifiedEmail(req, res) {
-  api.getVerifiedEmail(req.param('env'), function(err, data) {
+  api.getVerifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err) {
       res.writeHead(500);
       return res.end();
@@ -81,7 +82,7 @@ app.get('/email/verified/:env?', verifyEnv, function getVerifiedEmail(req, res) 
 });
 
 app.get('/email/unverified/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
-  api.getUnverifiedEmail(req.param('env'), function(err, data) {
+  api.getUnverifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err) {
       res.writeHead(500);
       return res.end();
@@ -153,7 +154,7 @@ io.on('connection', function(socket) {
         if (allowedEnvs.indexOf(serverEnv) === -1) {
           console.error("Unsupported server environment: " + serverEnv);
         } else {
-          api.getTestUser(serverEnv, function(err, user) {
+          api.getVerifiedEmail(serverEnv, function(err, user) {
             socket.json.send({err: err, user: user});
           });
         }

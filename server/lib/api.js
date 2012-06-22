@@ -213,14 +213,14 @@ var API = module.exports = function API(config, onready) {
     }
   };
 
-  this.genKeyPair = function genKeyPair(params, callback) {
+  this.generateKeypair = function genKeyPair(params, callback) {
     if (!params.email) {
       return callback("params missing required email");
     }
     jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
       getRedisClient().hmset('ptu:email:'+params.email, {
         publicKey: kp.publicKey.serialize(),
-        privateKey: kp.privateKey.serialize()
+        secretKey: kp.secretKey.serialize()
       }, function(err) {
         return callback(err, kp);
       });
@@ -231,20 +231,21 @@ var API = module.exports = function API(config, onready) {
     var email = params.email;
     var password = params.password;
     var duration = params.duration || (60 * 60 * 1000);
-    if (! email && password && audience) {
+    var serverEnv = vconf[params.env];
+    if (! (email && password && audience && serverEnv)) {
       return callback(new Error("required param missing"));
     }
 
     var now = new Date();
     var expiresAt = new Date(now.getTime() + duration);
 
-    getRedisClient().get(email, function(err, storedPassword) {
-      if (false && password !== storedPassword) {
+    getRedisClient().hgetall('ptu:email:'+email, function(err, userData) {
+      if (password !== userData.password) {
         return callback(new Error("Password incorrect"));
       }
 
       self.generateKeypair(params, function(err, kp) {
-        bid.certifyKey(email, kp.publicKey, function(err, cert) {
+        bid.certifyKey(serverEnv, email, kp.publicKey, function(err, cert) {
           return callback(null, cert);
         });
       });
