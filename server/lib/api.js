@@ -21,13 +21,6 @@ const DEFAULT_DOMAIN =
 
 console.log('my domain is:', DEFAULT_DOMAIN);
 
-var verifier = new bid.Verifier(vconf);
-verifier.startVerifyingEmails();
-
-// a place to register recently-verified emails.
-var availableEmails = {};
-
-
 function expectSoon(f, interval_ms, callback) {
   function isTrueWithinTime(elapsed_ms) {
 
@@ -82,13 +75,14 @@ var API = module.exports = function API(config, onready) {
   // network issues, intense solar flare activity, frisky smurfs, etc.  So
   // getVerifiedEmail (below) will timeout and return an error if the email
   // creation has not completed within five seconds.
-  var verifier = new bid.Verifier(vconf);
-  verifier.startVerifyingEmails();
-  verifier.on('error', function(err) {
+  this.verifier = new bid.Verifier(vconf);
+  this.availableEmails = {};
+  this.verifier.startVerifyingEmails();
+  this.verifier.on('error', function(err) {
     console.log("Verifier ERROR: " + err);
   });
-  verifier.on('user-ready', function(email, token) {
-    availableEmails[email] = token || true;
+  this.verifier.on('user-ready', function(email, token) {
+    self.availableEmails[email] = token || true;
   });
 
   // XXX i would like to have a select(db, onready), but i'm getting
@@ -133,12 +127,12 @@ var API = module.exports = function API(config, onready) {
         if (err) return callback(err);
         expectSoon(
           function() {
-            return (!! verificationTokens[data.email]);
+            return (!! self.availableEmails[data.email]);
           },
           5000,
           function(it_worked) {
             if (it_worked) {
-              data['token'] = verificationTokens[data.email];
+              data['token'] = self.availableEmails[data.email];
               getRedisClient().hset(data.email, 'token', data.token, function(err) {
                 return callback(null, data);
               });
@@ -176,7 +170,7 @@ var API = module.exports = function API(config, onready) {
           expectSoon(
             (function() {
                self.emit('message', "Verifying new user");
-               return availableEmails[email] === true;
+               return self.availableEmails[email] === true;
              }),
              5000, // milliseconds
              function(it_worked) {
@@ -184,7 +178,7 @@ var API = module.exports = function API(config, onready) {
                  console.log("getVerifiedUser: SUCCESS! verified " + email);
                  self.emit('message', "Verified new user");
                  // clean up
-                 delete availableEmails[email];
+                 delete self.availableEmails[email];
                  return callback(null, data);
                } else {
                  self.emit('message', "Aw, snap.  User verification timed out.");

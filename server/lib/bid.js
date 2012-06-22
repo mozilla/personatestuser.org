@@ -50,7 +50,7 @@ var Verifier = function Verifier() {
       if (err) {
         return callback("Can't complete user creation: " + err);
       } else {
-        self._stagedEmailBecomesLive(userData.email, callback);
+        self._stagedEmailBecomesLive(userData, callback);
       }
     });
   };
@@ -91,7 +91,7 @@ var Verifier = function Verifier() {
         var userData = results[1];
 
         // maybe complete user creation
-        if (userData.do_verify !== 'no') {
+        if (userData.do_verify === 'yes') {
           self.completeUserCreation(userData, function(err) {
             if (err) {
               self.emit('error', err);
