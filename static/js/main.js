@@ -6,6 +6,7 @@ var UserEmail = Backbone.Model.extend({
   defaults: {
     email: '',
     password: '',
+    token: '',
     expiresDisplay: 'Kinda soon'
   }
 });
@@ -18,12 +19,42 @@ var Assertion = Backbone.Model.extend({
 
 var Application = Backbone.Model.extend({});
 
-var UserEmailView = Backbone.View.extend({
-  model: UserEmail, 
+var VerifiedEmailView = Backbone.View.extend({
+  model: UserEmail,
 
-  el: $('#create-user-info'),
+  el: $('#create-verified-email-info'),
 
-  template: _.template( $('#email-template').html() ),
+  template: _.template( $('#verified-email-template').html() ),
+
+  initialize: function() {
+    _.bindAll(this, 'render');
+    this.refresh();
+  },
+
+  render: function() {
+    $(this.el).html(this.template(this.model.toJSON()));
+    $(this.el).fadeIn();
+
+    return this;
+  },
+
+  refresh: function(data) {
+    if (data && (data.email && data.password)) {
+      data.expiresDisplay = (new Date(data.expires)).toLocaleString();
+      this.model.set(data);
+      this.render();
+    } else {
+      $(this.el).hide();
+    }
+  }
+});
+
+var UnverifiedEmailView = Backbone.View.extend({
+  model: UserEmail,
+
+  el: $('#create-unverified-email-info'),
+
+  template: _.template( $('#unverified-email-template').html() ),
 
   initialize: function() {
     _.bindAll(this, 'render');
@@ -69,27 +100,35 @@ var ApplicationView = Backbone.View.extend({
   el: $("#content"),
 
   events: {
-    'click #submit-create-user': 'createUser',
+    'click #submit-email-verified': 'createVerifiedEmail',
+    'click #submit-emial-unverified': 'createUnverifiedEmail',
     'click #submit-create-assertion': 'createAssertion'
   },
 
   initialize: function() {
     var self = this;
-    this.userEmailView = new UserEmailView({model: new UserEmail()});
+    this.verifiedEmailView = new VerifiedEmailView({model: new UserEmail()});
+    this.unverifiedEmailView = new UnverifiedEmailView({model: new UserEmail()});
     this.assertionView = new AssertionView({model: new Assertion()});
 
     var socket = io.connect();
     socket.on('connect', function() {});
     socket.on('message', function(data) {
-      if (data.user) {
-        self.userEmailView.refresh(data.user);
-      } else if (data.assertion) {
-        self.assertionView.refresh(data.assertion);
-      } else if (data.status) {
-        $('#status .message')
-          .hide()
-          .text(data.status)
-          .fadeIn(150);
+      switch (data.type) {
+        case "status":
+          $('#status .message')
+            .hide()
+            .text(data.data)
+            .fadeIn(150);
+         break;
+        case "verifiedEmail":
+          self.verifiedEmailView.refresh(data.data);
+          break;
+        case "unverifiedEmail":
+          self.unverifiedEmailView.refresh(data.data);
+          break;
+        default:
+          break;
       }
     });
 
@@ -100,14 +139,20 @@ var ApplicationView = Backbone.View.extend({
   },
 
   render: function() {
-    return this
+    return this;
   },
 
-  createUser: function(evt) {
+  createVerifiedEmail: function(evt) {
     // XXX when the user clicks this button, it should
     // be disabled until the completion process terminates.
-    this.userEmailView.refresh();
-    this.socket.json.send({method: 'getTestUser'});
+    this.verifiedEmailView.refresh();
+    this.socket.json.send({method: 'getVerifiedEmail'});
+    return false;
+  },
+
+  createUnverifiedEmail: function(evt) {
+    this.unverifiedEmailView.refresh();
+    this.socket.json.send({method: 'getUnverifiedEmail'});
     return false;
   },
 
@@ -117,5 +162,3 @@ var ApplicationView = Backbone.View.extend({
     return false;
   }
 });
-
-

@@ -137,29 +137,38 @@ app.post('/user_and_assertion/:audience', function postGetAssertion(req, res) {
 // socket.io interface
 
 api.on('error', function(err) {
+  io.sockets.emit('message', {'type': 'status', 'data': err});
   console.log("ERROR: app: " + err);
 });
 api.on('message', function(message) {
   console.log("app: " + message);
   // XXX should not broadcast all api messages - only per-socket
   // by api call
-  io.sockets.emit('message', {'status': message});
+  io.sockets.emit('message', {'type': 'status', 'data': message});
 });
 
 io.on('connection', function(socket) {
   socket.on('message', function(data) {
     if (data.method) {
-      if (data.method === 'getTestUser') {
-        var serverEnv = data.env ? data.env : 'prod';
-        if (allowedEnvs.indexOf(serverEnv) === -1) {
-          console.error("Unsupported server environment: " + serverEnv);
-        } else {
-          api.getVerifiedEmail(serverEnv, function(err, user) {
-            socket.json.send({err: err, user: user});
-          });
-        }
+      var serverEnv = data.env ? data.env : 'prod';
+      if (allowedEnvs.indexOf(serverEnv) === -1) {
+        socket.json.send({err: "Unsupported env: " + data.env});
       } else {
-        console.error("Unsupported method: " + data.method);
+        switch(data.method) {
+          case 'getVerifiedEmail':
+            api.getVerifiedEmail(serverEnv, function(err, user) {
+              socket.json.send({err: err, type: "verifiedEmail", data: user});
+            });
+            break;
+          case 'getUnverifiedEmail':
+            api.getUnverifiedEmail(serverEnv, function(err, user) {
+              socket.json.send({err: err, type: "unverifiedEmail", data: user});
+            });
+            break;
+          default:
+            socket.json.send({err: "Unsupported method"});
+            break;
+        }
       }
     }
   });

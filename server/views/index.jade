@@ -1,4 +1,4 @@
-#email-template(style='display: none')
+#verified-email-template(style='display: none')
   ul.info
     li
       span.key Username
@@ -12,22 +12,83 @@
       span.key Expires
       span.value {{ expiresDisplay }}
 
+#unverified-email-template(style='display: none')
+  ul.info
+    li
+      span.key Username
+      span.value
+        tt.selectable {{ email }}
+    li
+      span.key Password
+      span.value
+        tt.selectable {{ password }}
+    li
+      span.key Token
+      span.value
+        tt.selectable {{ token }}
+    li
+      span.key Expires
+      span.value {{ expiresDisplay }}
 
-#status
-  .message Generate your very own Persona test user.  &lt;gleam!/&gt;
 
 
-#create-user
-  a(class='function', href='/test_user', id='submit-create-user') Make me an Email!
+div
+  #status
+    .message Generate your very own Persona test user.  &lt;gleam!/&gt;
 
-  .info
-    #create-user-info
 
-  #create-assertion
-    a(class='function', href='/assertion', id='submit-create-assertion') Get an Assertion!
+div
 
-    .info
-      #create-assertion-info
+  div This is a service for creating temporary test user accounts and assertions for 
+    a(href='https://persona.org') Persona
+    | .
+
+  h3 HTTP API
+
+  dl
+    dt Verified Email
+    dd
+      code GET /email/verified
+        span.option /:env
+      p Get a new, verified email and password.
+
+      div
+        a(class='function', href='/email/verified', id='submit-email-verified') Get a Verified Email
+
+        .info
+          #create-verified-email-info
+
+    dt Unverified Email
+    dd
+      code GET /email/unverified
+        span.option /:env
+      p Get an email, password, and verification token.
+
+      div
+        a(class='function', href='/email/unverified', id='submit-email-unverified') Get an Unverified Email
+
+        .info
+          #create-unverified-email-info
+
+
+    dt Email and Assertion
+    dd
+      code GET /assertion/
+        span.param :audience
+        span.option /:env 
+      p Get a new email, password, and assertion for the given audience.
+
+    dt Assertion
+    dd
+      code GET /assertion/
+        span.param :audience
+        | /email/
+        span.param :email
+        | /password/
+        span.param :password
+        span.option /:env
+      p Get an assertion, using a valid email and password, for the given audience.
+
 
 script
   head.ready(function() {

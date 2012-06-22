@@ -52,7 +52,7 @@ table {
     border-spacing: 0;
 }
 
-/* 
+/*
  End of reset
  */
 
@@ -63,10 +63,73 @@ body {
   color: #000;
 }
 
+a {
+  text-decoration: none;
+}
+
 h1 {
   font-size: 2em;
   padding: 1em 0em;
 }
+
+h2 {
+  font-size: 1.9em;
+  padding: 0em 0em .6em 0em;
+}
+
+h3 {
+  font-size: 1.5em;
+  padding: 1em 0em .3em 0em;
+}
+
+div {
+  margin: .3em 0em;
+}
+
+pre, code {
+  background-color: #eee;
+  -moz-border-radius: 6px;
+  -webkit-border-radius: 6px;
+  -border-radius: 6px;
+  border: 1px solid #999;
+  font-family: "ocr-b-std-1","ocr-b-std-2",monospace;
+  font-weight: 400;
+  font-size: 12px;
+  padding: 4px;
+  margin: 2px;
+}
+
+pre {
+  margin: 4px 0px;
+  padding: .6em;
+  line-height: 1.3em;
+}
+
+.option {
+  font-style: italic;
+  color: #aaa;
+}
+
+.param {
+  font-weight: bold;
+  font-style: italic;
+  color: #A11;
+}
+
+dl {
+  line-height: 2em;
+}
+dt {
+  position: relative;
+  float: left;
+  font-variant: small-caps;
+  padding-bottom: .66em;
+}
+dd {
+  margin-left: 12em;
+  padding-bottom: .66em;
+}
+
 
 #status {
   min-height: 1.6em;
@@ -81,13 +144,11 @@ h1 {
 
 #wrapper {
   position: absolute;
-  width: 800px;
   margin-left: 100px;
   display: block;
 }
 
 #centered {
-  width: 600px;
   display: block;
   margin: 0 auto;
   padding-top: 4em;
@@ -124,7 +185,7 @@ span.value {
   color: #565656;
 }
 
-span.value tt { 
+span.value tt {
   color: #000;
   font-family: "Courier New",Courier,monospace;
   display: inline-block;
@@ -171,14 +232,13 @@ a.function {
   display: inline-block;
   text-decoration: none;
   text-align: center;
+  line-height: 1.67em;
   min-width: 14em;
   outline: none;
-  padding: 4px 6px;
-  font-size: 1.4em;
-  margin: 6px 0px;
-  -moz-border-radius: .6em;
-  -webkit-border-radius: .6em;
-  border-radius: .6em;
+  font-size: .9em;
+  -moz-border-radius: .3em;
+  -webkit-border-radius: .3em;
+  border-radius: .3em;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
   -moz-text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
   -webkit-text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
@@ -199,3 +259,6 @@ a.function:hover {
   background: -webkit-gradient(linear, left top, left bottom, from(#679ef1), to(#538ad1));
   background: -moz-linear-gradient(top, #679ef1, #538ad1);
 }
+
+
+
