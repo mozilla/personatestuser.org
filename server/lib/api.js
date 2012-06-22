@@ -56,7 +56,13 @@ var API = module.exports = function API(config, onready) {
   // ptu:mailq          = a list used as a queue from the mail daemon
   // ptu:emails:staging = zset of user emails scored by creation date
   // ptu:emails:valid   = zset of user emails scored by creation date
-  // ptu:email:<email>  = hash containing password, session, and env
+  // ptu:email:<email>  = hash containing most or all of:
+  //                      email     the redis email key
+  //                      password  password for email account
+  //                      session   IdP session (JSON string)
+  //                      token     verifier token (JSON string)
+  //                      env       server env (prod, dev, stage)
+  //                      do_verify flag
   //
   // Emails start their life in staging and, if all goes well, end
   // up in ptu:emails once validated etc.  We cull both zsets
@@ -115,6 +121,25 @@ var API = module.exports = function API(config, onready) {
     });
   };
 
+  this.waitForEmail = function waitForEmail(email, callback) {
+    expectSoon(
+      function() {
+        self.emit('message', "Awaiting " + email);
+          return (!! self.availableEmails[email]);
+        },
+        5000, // milliseconds,
+        function(it_worked) {
+          if (it_worked) {
+            self.emit('message', "Received " + email);
+            getRedisClient().hgetall(email, callback);
+          } else {
+            self.emit('error', "Timed out waiting for " + email);
+            callback("Timed out waiting for " + email);
+          }
+        }
+    );
+  };
+
   /*
    * getUnverifiedEmail - get a username and password, and stage it
    * with our IdP.  Don't complete the user creation; return the
@@ -125,22 +150,20 @@ var API = module.exports = function API(config, onready) {
       if (err) return callback(err);
       getRedisClient().hset(data.email, 'do_verify', 'no', function(err) {
         if (err) return callback(err);
-        expectSoon(
-          function() {
-            return (!! self.availableEmails[data.email]);
-          },
-          5000,
-          function(it_worked) {
-            if (it_worked) {
-              data['token'] = self.availableEmails[data.email];
-              getRedisClient().hset(data.email, 'token', data.token, function(err) {
-                return callback(null, data);
-              });
-            } else {
-                return callback("timed out");
-            }
+
+        self.waitForEmail(data.email, function(err, emailData) {
+          if (err) {
+            return callback(err);
+          } else {
+            return callback(null, {
+              email: emailData.email,
+              password: emailData.password,
+              token: emailData.token,
+              expires: emailData.expires,
+              env: emailData.env
+            });
           }
-        );
+        });
       });
     });
   };
@@ -154,39 +177,25 @@ var API = module.exports = function API(config, onready) {
   this.getVerifiedEmail = function getVerifiedEmail(serverEnv, callback) {
     this.generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
-      var email = data.email;
-      var password = data.password;
-      var expires = data.expires;
       getRedisClient().hset(data.email, 'do_verify', 'yes', function(err) {
-        bid.createUser(vconf[serverEnv], email, password, function(err) {
+        bid.createUser(vconf[serverEnv], data.email, data.password, function(err) {
           console.log("getVerifiedUser: in callback from bid.createUser; err = " + err);
           if (err) return callback(err);
 
-          // Now check periodically for the email to have appeared in
-          // our verfiedEmails bucket.  Once it is there, we know the
-          // creation process has completed successfully and we can
-          // return an object containing the email, password, and timeout.
-          // If this does not complete within 5 seconds, return error.
-          expectSoon(
-            (function() {
-               self.emit('message', "Verifying new user");
-               return self.availableEmails[email] === true;
-             }),
-             5000, // milliseconds
-             function(it_worked) {
-               if (it_worked) {
-                 console.log("getVerifiedUser: SUCCESS! verified " + email);
-                 self.emit('message', "Verified new user");
-                 // clean up
-                 delete self.availableEmails[email];
-                 return callback(null, data);
-               } else {
-                 self.emit('message', "Aw, snap.  User verification timed out.");
-                 return callback("User creation timed out");
-               }
-             }
-
-           );
+          self.waitForEmail(data.email, function(err, emailData) {
+            if (err) {
+              return callback(err);
+            } else {
+              // With a verified email, we don't send back the
+              // already-used verification token.
+              return callback(null, {
+                email: emailData.email,
+                password: emailData.password,
+                expires: emailData.expires,
+                env: emailData.env
+              });
+            }
+          });
         });
       });
     });
