@@ -229,11 +229,19 @@ var API = module.exports = function API(config, onready) {
     });
   };
 
-  this.cancelAccount = function cancelAccount(email, pass, callback) {
-    getRedisClient().hgetall('ptu:email:'+email, function(err, userData) {
-      if (!userData || userData.pass !== pass) {
+  this.getUserData = function getEmailData(email, pass, callback) {
+    // get the email data if the caller knows the right password
+    getRedisClient().hgetall('ptu:email:'+email, function(err, data) {
+      if (!data || data.pass !== pass) {
         return callback("Username and password do not match");
       }
+      return callback(err, data);
+    });
+  };
+
+  this.cancelAccount = function cancelAccount(email, pass, callback) {
+    this.getUserData(email, pass, function(err, userData) {
+      if (err) return callback(err);
       var context = JSON.parse(userData.context);
       bid.cancelAccount(userData.env, context, function(err, results) {
         return callback(err, results);
@@ -241,11 +249,11 @@ var API = module.exports = function API(config, onready) {
     });
   };
 
-  this.getAssertion = function getAssertion(params, audience, callback) {
-    var email = params.email;
-    var pass = params.pass;
-    var duration = params.duration || (60 * 60 * 1000);
-    var serverEnv = vconf[params.env];
+  this.getAssertion = function getAssertion(userData, audience, callback) {
+    var email = userData.email;
+    var pass = userData.pass;
+    var duration = userData.duration || (60 * 60 * 1000);
+    var serverEnv = vconf[userData.env];
     if (! (email && pass && audience && serverEnv)) {
       return callback(new Error("required param missing"));
     }
@@ -253,37 +261,31 @@ var API = module.exports = function API(config, onready) {
     var now = new Date();
     var expiresAt = new Date(now.getTime() + duration);
 
-    getRedisClient().hgetall('ptu:email:'+email, function(err, userData) {
-      if ((!userData) || (pass !== userData.pass)) {
-        return callback(new Error("Email and password don't match"));
-      }
-
-      self._generateKeypair(params, function(err, kp) {
-        bid.authenticateUser(serverEnv, email, pass, function(err) {
-          bid.certifyKey(serverEnv, email, kp.publicKey, function(err, res) {
-            var cert = res.body;
-            jwcrypto.assertion.sign(
-              {},
-              {audience: audience, expiresAt: expiresAt},
-              kp.secretKey,
-              function(err, assertion) {
-                if (err) return self.callback(err);
-                var bundle = jwcrypto.cert.bundle([cert], assertion);
-                return callback(null, {
-                   email: userData.email,
-                   pass: userData.pass,
-                   expires: userData.expires,
-                   env: userData.env,
-                   browserid: serverEnv.browserid,
-                   verifier: serverEnv.verifier,
-                   audience: audience,
-                   assertion: assertion,
-                   cert: cert,
-                   bundle: bundle
-                });
-              }
-            );
-          });
+    self._generateKeypair(userData, function(err, kp) {
+      bid.authenticateUser(serverEnv, email, pass, function(err) {
+        bid.certifyKey(serverEnv, email, kp.publicKey, function(err, res) {
+          var cert = res.body;
+          jwcrypto.assertion.sign(
+            {},
+            {audience: audience, expiresAt: expiresAt},
+            kp.secretKey,
+            function(err, assertion) {
+              if (err) return self.callback(err);
+              var bundle = jwcrypto.cert.bundle([cert], assertion);
+              return callback(null, {
+                 email: userData.email,
+                 pass: userData.pass,
+                 expires: userData.expires,
+                 env: userData.env,
+                 browseridb: serverEnv.browserid,
+                 verifier: serverEnv.verifier,
+                 audience: audience,
+                 assertion: assertion,
+                 cert: cert,
+                 bundle: bundle
+              });
+            }
+          );
         });
       });
     });

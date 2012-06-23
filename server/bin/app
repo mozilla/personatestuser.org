@@ -104,29 +104,37 @@ app.get('/cancel/email/:email/password/:password', function cancelAccount(req, r
   });
 });
 
-app.get('/assertion/:audience/email/:email/password/:password/:env?', verifyEnv, function getAssertion(rea, res) {
-  return res.end('stub');
-});
-
-app.get('/assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
-  api.getVerifiedEmail(req.param('env'), function(err, data) {
-    if (err || !data) {
-      res.writeHead(500);
+function _getAssertion(userData, audience, req, res) {
+  // utility function for assertion getters below
+  api.getUserData(req.param('email'), req.param('password'), function(err, userData) {
+    if (err) {
+      res.writeHead(400);
       return res.end();
     }
-    api.getAssertion(data, req.param('audience'), function(err, assertion) {
-      if (err || !assertion) {
+    api.getAssertion(userData, audience, function(err, results) {
+      if (err || !results) {
         res.writeHead(500);
         return res.end();
       }
       res.contentType('json');
-      return res.end(JSON.stringify({data:data, assertion:assertion}));
+      return res.end(JSON.stringify(results));
     });
   });
+};
+
+app.get('/assertion/:audience/email/:email/password/:password', function getAssertion(rea, res) {
+  return _getAssertion(req.param('email'), req.param('password'), req.param('audience'), req, res);
+
 });
 
-app.get('/assertion/:email/:password/:audience', function getAssertion(req, res) {
-  return res.end("not implemented yet");
+app.get('/assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
+  api.getVerifiedEmail(req.param('env'), function(err, data) {
+    if (err || !userData) {
+      res.writeHead(500);
+      return res.end();
+    }
+    return _getAssertion(data.email, data.pass, req.param('audience'), req, res);
+  });
 });
 
 // ----------------------------------------------------------------------
