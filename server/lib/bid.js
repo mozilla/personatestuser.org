@@ -66,7 +66,6 @@ var Verifier = function Verifier() {
       // data is a tuple like [qname, data]
       // where data contains a context of an expired account
       try {
-        console.log(data);
         data = JSON.parse(data[1]);
         var env = data[0];
         var context = JSON.parse(data[1]);
@@ -101,7 +100,7 @@ var Verifier = function Verifier() {
       var email = data.email;
       var token = data.token;
       if (! (email && token)) {
-        console.log("both email and token not provided: " + data);
+        console.log("_startVerifyingEmails: require both email and token");
         self._startVerifyingEmails();
         return;
       }
@@ -177,7 +176,6 @@ var getSessionContext = function getSessionContext(config, context, callback) {
       context.session = {};
     }
     for (var key in session) {
-      console.log(key + " = " + JSON.stringify(session[key]));
       context.session[key] = session[key];
     }
 
@@ -314,12 +312,10 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
       pubkey: pubkey.serialize(),
       ephemeral: false
     }, function(err, res) {
-      console.log("cert_key returned err " + err);
       if (err) {
         console.log("ERROR: certifyKey: " + err);
         return callback(err);
       }
-      console.log("                res = " + JSON.stringify(res, null, 2));
       return callback(null, res);
     });
   });
