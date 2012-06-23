@@ -125,24 +125,8 @@ app.get('/assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(r
   });
 });
 
-function _getAssertion(params, req, res) {
-  api.getAssertion(params, function(err, assertion) {
-    if (err) {
-      res.writeHead(500);
-      return res.end();
-    }
-
-    res.contentType('json');
-    return res.end(JSON.stringify(assertion));
-  });
-}
-
 app.get('/assertion/:email/:password/:audience', function getAssertion(req, res) {
-  _getAssertion(req.params, req, res);
-});
-
-app.post('/user_and_assertion/:audience', function postGetAssertion(req, res) {
-  _getAssertion(req.body, req, res);
+  return res.end("not implemented yet");
 });
 
 // ----------------------------------------------------------------------
