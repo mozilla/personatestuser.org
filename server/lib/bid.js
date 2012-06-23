@@ -74,6 +74,7 @@ var Verifier = function Verifier() {
           if (err) console.log("ERROR: cancelAccount returned: " + err);
         });
       } catch (err) {
+        // XXX should flush from redis anyway?
         console.log("ERROR: _startCancelingExpiredEmails: " + err);
       }
 
@@ -326,6 +327,17 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
 
 var cancelAccount = function cancelAccount(serverEnv, context, callback) {
   // Authenticate with the context and then cancel the account
+
+  // Either way, remove the user from the redis db.
+  var email = context.email;
+  if (email) {
+    getRedisClient().multi()
+      .del('ptu:email:'+email)
+      .zrem('ptu:emails:staging', email)
+      .zrem('ptu:emails:valid', email)
+      .exec();
+  }
+
   wsapi.post(vconf[serverEnv], '/wsapi/authenticate_user', context, {
     email: context.email,
     pass: context.pass,
@@ -337,6 +349,12 @@ var cancelAccount = function cancelAccount(serverEnv, context, callback) {
 
     // Get the new authentication cookie and save it in our context
     var body = JSON.parse(res.body);
+
+    if (!body.success || !res.headers['set-cookie']) {
+      // maybe user doesn't exist etc.
+      return callback("User not found");
+    }
+
     var set_cookie = res.headers['set-cookie'][0].split("=");
     var cookieJar = {};
     cookieJar[set_cookie[0]] = set_cookie[1];
@@ -353,17 +371,7 @@ var cancelAccount = function cancelAccount(serverEnv, context, callback) {
       if (res.code !== 200) {
         return callback("ERROR: cancelAccount: server returned status " + res.code);
       }
-
-      // now flush from redis
-      var multi = getRedisClient().multi();
-      multi.del('ptu:email:'+email);
-      multi.zrem('ptu:emails:staging', email);
-      multi.zrem('ptu:emails:valid', email);
-      return multi.exec(function(err) {
-        if (err) return callback(err);
-        // return the bid result
-        return callback(null, res);
-      });
+      return callback(null);
     });
   });
 };

@@ -93,8 +93,8 @@ app.get('/email/unverified/:env?', verifyEnv, function getUnverifiedEmail(req, r
   });
 });
 
-app.get('/cancel/email/:email/password/:password/:env?', verifyEnv, function cancelAccount(req, res) {
-  api.cancelAccount(req.param('env', 'prod'), function(err, data) {
+app.get('/cancel/email/:email/password/:password', function cancelAccount(req, res) {
+  api.cancelAccount(req.param('email'), req.param('password'), function(err, data) {
     if (err) {
       res.writeHead(500);
       return res.end();
