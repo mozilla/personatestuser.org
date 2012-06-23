@@ -192,7 +192,9 @@ var API = module.exports = function API(config, onready) {
             pass: emailData.pass,
             token: emailData.token,
             expires: emailData.expires,
-            env: emailData.env
+            env: emailData.env,
+            browserid: vconf[emailData.env].browserid,
+            verifier: vconf[emailData.env].verifier
           });
         }
       });
@@ -218,7 +220,9 @@ var API = module.exports = function API(config, onready) {
             email: emailData.email,
             pass: emailData.pass,
             expires: emailData.expires,
-            env: emailData.env
+            env: emailData.env,
+            browserid: vconf[emailData.env].browserid,
+            verifier: vconf[emailData.env].verifier
           });
         }
       });
@@ -265,7 +269,18 @@ var API = module.exports = function API(config, onready) {
               function(err, assertion) {
                 if (err) return self.callback(err);
                 var bundle = jwcrypto.cert.bundle([cert], assertion);
-                return callback(null, bundle);
+                return callback(null, {
+                   email: userData.email,
+                   pass: userData.pass,
+                   expires: userData.expires,
+                   env: userData.env,
+                   browserid: vconf[serverEnv].browserid,
+                   verifier: vconf[serverEnv].verifier,
+                   audience: audience,
+                   assertion: assertion,
+                   cert: cert,
+                   bundle: bundle
+                });
               }
             );
           });
