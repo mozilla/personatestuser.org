@@ -104,9 +104,9 @@ app.get('/cancel/email/:email/password/:password', function cancelAccount(req, r
   });
 });
 
-function _getAssertion(userData, audience, req, res) {
+function _getAssertion(email, password, audience, req, res) {
   // utility function for assertion getters below
-  api.getUserData(req.param('email'), req.param('password'), function(err, userData) {
+  api.getUserData(email, password, function(err, userData) {
     if (err) {
       res.writeHead(400);
       return res.end();
@@ -122,7 +122,7 @@ function _getAssertion(userData, audience, req, res) {
   });
 };
 
-app.get('/assertion/:audience/email/:email/password/:password', function getAssertion(rea, res) {
+app.get('/assertion/:audience/email/:email/password/:password', function getAssertion(req, res) {
   return _getAssertion(req.param('email'), req.param('password'), req.param('audience'), req, res);
 
 });
