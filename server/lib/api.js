@@ -256,8 +256,18 @@ var API = module.exports = function API(config, onready) {
 
       self._generateKeypair(params, function(err, kp) {
         bid.authenticateUser(serverEnv, email, pass, function(err) {
-          bid.certifyKey(serverEnv, email, kp.publicKey, function(err, cert) {
-            return callback(null, cert);
+          bid.certifyKey(serverEnv, email, kp.publicKey, function(err, res) {
+            var cert = res.body;
+            jwcrypto.assertion.sign(
+              {},
+              {audience: audience, expiresAt: expiresAt},
+              kp.secretKey,
+              function(err, assertion) {
+                if (err) return self.callback(err);
+                var bundle = jwcrypto.cert.bundle([cert], assertion);
+                return callback(null, bundle);
+              }
+            );
           });
         });
       });
