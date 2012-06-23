@@ -55,18 +55,6 @@ var Verifier = function Verifier() {
     });
   };
 
-  this.cancelAccount = function cancelAccount(email, serverEnv, callback) {
-    getRedisClient().hget('ptu:email:'+email, 'context', function(err, context) {
-      console.log("cancel account " + email + " cookieJar=" + JSON.stringify(context.cookieJar));
-      wsapi.post(vconf[serverEnv], '/wsapi/account_cancel', context, {}, function(err, res) {
-        if (res.code !== 200) {
-          return callback("ERROR: cancelAccount: server returned status " + res.code);
-        }
-        return callback(null);
-      });
-    });
-  };
-
   /*
    * Keep an eye on the ptu:expired queue for emails that have been
    * culled from the db.  To be nice, we delete these from the
@@ -76,12 +64,15 @@ var Verifier = function Verifier() {
     var cli = getRedisClient();
     cli.blpop('ptu:expired', 0, function(err, data) {
       // data is a tuple like [qname, data]
-      // where data contains the email and the env for the email
+      // where data contains a context of an expired account
       try {
-        var parts = data[1].split(",");
-        var env = parts[0];
-        var email = parts[1];
-        self.cancelAccount(email, env);
+        console.log(data);
+        data = JSON.parse(data[1]);
+        var env = data[0];
+        var context = JSON.parse(data[1]);
+        cancelAccount(env, context, function(err) {
+          if (err) console.log("ERROR: cancelAccount returned: " + err);
+        });
       } catch (err) {
         console.log("ERROR: _startCancelingExpiredEmails: " + err);
       }
@@ -188,9 +179,6 @@ var getSessionContext = function getSessionContext(config, context, callback) {
       console.log(key + " = " + JSON.stringify(session[key]));
       context.session[key] = session[key];
     }
-
-    console.log("context updated with session_context response");
-    console.log(JSON.stringify(context, null, 2));
 
     return callback(null, res);
   });
@@ -336,11 +324,58 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
   });
 };
 
+var cancelAccount = function cancelAccount(serverEnv, context, callback) {
+  // Authenticate with the context and then cancel the account
+  wsapi.post(vconf[serverEnv], '/wsapi/authenticate_user', context, {
+    email: context.email,
+    pass: context.pass,
+    ephemeral: true
+  }, function(err, res) {
+    if (err || res.code !== 200) {
+      return callback("ERROR: cancelAccount: authenticateUser: server code " + res.code);
+    }
+
+    // Get the new authentication cookie and save it in our context
+    var body = JSON.parse(res.body);
+    var set_cookie = res.headers['set-cookie'][0].split("=");
+    var cookieJar = {};
+    cookieJar[set_cookie[0]] = set_cookie[1];
+    context.cookieJar = cookieJar;
+
+    // Now cancel the account
+    wsapi.post(vconf[serverEnv], '/wsapi/account_cancel', context, {
+      email: context.email,
+      pass: context.pass
+    }, function(err, res) {
+      if (err) {
+        return callback("ERROR: cancelAccount: " + err);
+      }
+      if (res.code !== 200) {
+        return callback("ERROR: cancelAccount: server returned status " + res.code);
+      }
+
+      // now flush from redis
+      var multi = getRedisClient().multi();
+      multi.del('ptu:email:'+email);
+      multi.zrem('ptu:emails:staging', email);
+      multi.zrem('ptu:emails:valid', email);
+      return multi.exec(function(err) {
+        if (err) return callback(err);
+        // return the bid result
+        return callback(null, res);
+      });
+    });
+  });
+};
+
+
+
 // the individual api calls
 module.exports.getSessionContext = getSessionContext;
 module.exports.stageUser = stageUser;
 module.exports.authenticateUser = authenticateUser;
 module.exports.certifyKey = certifyKey;
+module.exports.cancelAccount = cancelAccount;
 
 // higher-level compositions
 module.exports.createUser = createUser;

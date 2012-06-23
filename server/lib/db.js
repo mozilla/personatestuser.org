@@ -36,29 +36,26 @@ function _cullOldEmails(age, callback) {
       // delete the account
       var multi = cli.multi();
       Object.keys(toCull).forEach(function(email) {
-        multi.hget('ptu:email:'+email, 'env');
+        multi.hmget('ptu:email:'+email, 'env', 'context');
       });
-      multi.exec(function(err, envs) {
+      multi.exec(function(err, contexts) {
         var multi = cli.multi();
         Object.keys(toCull).forEach(function(email, index) {
           // Push the email to be culled and its domain onto the expired queue.
           // The bid module will take it from there and tell the IdP to delete
           // the account.
-          multi.rpush('ptu:expired', envs[index]+','+email);
 
-          // Delete from the local datastore
-          multi.del('ptu:email:'+email);
-          multi.zrem('ptu:emails:staging', email);
-          multi.zrem('ptu:emails:valid', email);
+          // The data will actually be delete by bid.cancelAccount
+          // Which indicates that these functions belong back in the bid module ...
+          multi.rpush('ptu:expired', JSON.stringify(contexts[index]));
           numCulled ++;
-          console.log("will cull expired email: " + email);
+          console.log("expired email: " + email);
         });
         multi.exec(function(err, results) {
           if (err) {
             return callback(err);
           } else {
-            if (numCulled) console.log("culled " + numCulled + " emails");
-            return callback(null, numCulled);
+            return callback(null);
           }
         });
       });

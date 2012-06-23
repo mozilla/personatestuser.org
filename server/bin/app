@@ -93,6 +93,17 @@ app.get('/email/unverified/:env?', verifyEnv, function getUnverifiedEmail(req, r
   });
 });
 
+app.get('/cancel/email/:email/password/:password/:env?', verifyEnv, function cancelAccount(req, res) {
+  api.cancelAccount(req.param('env', 'prod'), function(err, data) {
+    if (err) {
+      res.writeHead(500);
+      return res.end();
+    }
+    res.contentType('json');
+    return res.end(JSON.stringify(data));
+  });
+});
+
 app.get('/assertion/:audience/email/:email/password/:password/:env?', verifyEnv, function getAssertion(rea, res) {
   return res.end('stub');
 });

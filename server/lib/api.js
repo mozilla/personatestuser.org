@@ -225,16 +225,16 @@ var API = module.exports = function API(config, onready) {
     });
   };
 
-  this.deleteTestUser = function deleteTestUser(email, callback) {
-    try {
-      var multi = getRedisClient().multi();
-      multi.del('ptu:email:'+email);
-      multi.zrem('ptu:emails:staging', email);
-      multi.zrem('ptu:emails:valid', email);
-      return multi.exec(callback);
-    } catch (err) {
-      return callback(err);
-    }
+  this.cancelAccount = function cancelAccount(email, pass, callback) {
+    getRedisClient().hgetall('ptu:email:'+email, function(err, userData) {
+      if (!userData || userData.pass !== pass) {
+        return callback("Username and password do not match");
+      }
+      var context = JSON.parse(userData.context);
+      bid.cancelAccount(userData.env, context, function(err, results) {
+        return callback(err, results);
+      });
+    });
   };
 
   this.getAssertion = function getAssertion(params, audience, callback) {
