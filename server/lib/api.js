@@ -346,8 +346,7 @@ var names = [
 
 var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
             'abcdefghijklmnopqrstuvwxyz' +
-            '1234567890' +
-            '~#$%^&*(){}[]_+-=,.;:';
+            '1234567890';
 
 var numNames = names.length;
 var numChars = chars.length;
