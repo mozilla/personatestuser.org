@@ -10,7 +10,7 @@ const jwcrypto = require('jwcrypto'),
       vconf = require('./vconf'),
       ALGORITHM = "RS",
       KEYSIZE = 256,
-      ONE_HOUR_IN_SECONDS;
+      ONE_HOUR_IN_SECONDS= 60 * 60;
 
 // Import the jwcrypto algorithms
 require('jwcrypto/lib/algs/rs');
