@@ -6,11 +6,16 @@ const jwcrypto = require('jwcrypto'),
       path = require('path'),
       bid = require('./bid'),
       unixTime = require('./time').unixTime,
-      getRedisClient = require('./db').getRedisClient,
+      redis = require('redis'),
+      redisConf = require('./config'),
       vconf = require('./vconf'),
       ALGORITHM = "RS",
       KEYSIZE = 256,
+      ONE_MIN_IN_SECONDS = 60,
       ONE_HOUR_IN_SECONDS= 60 * 60;
+
+var _culling = false;
+
 
 // Import the jwcrypto algorithms
 require('jwcrypto/lib/algs/rs');
@@ -47,6 +52,7 @@ function expectSoon(f, interval_ms, callback) {
 
 var API = module.exports = function API(config, onready) {
   events.EventEmitter.call(this);
+  this._alreadyCulling = false;
   var self = this;
 
   onready = onready || function() {};
@@ -70,6 +76,73 @@ var API = module.exports = function API(config, onready) {
   // up in ptu:emails once validated etc.  We cull both zsets
   // regularly for expired data.
 
+  this._cullOldEmails = function _cullOldEmails(age, callback) {
+    var toCull = {};
+    var numCulled = 0;
+    var email;
+
+    // asynchronously cull the outdated emails in valid and staging
+    redis.createClient().zrangebyscore('ptu:emails:valid', '-inf', age, function(err, results) {
+      if (err) return callback(err);
+      results.forEach(function(email) {
+        toCull[email] = true;
+      });
+
+      redis.createClient().zrangebyscore('ptu:emails:staging', '-inf', age, function(err, results) {
+        if (err) return callback(err);
+        results.forEach(function(email) {
+          toCull[email] = true;
+        });
+
+        // we need to get the env for each email so we know how to
+        // delete the account
+        var multi = redis.createClient().multi();
+        Object.keys(toCull).forEach(function(email) {
+          multi.hmget('ptu:email:'+email, 'env', 'context');
+        });
+        multi.exec(function(err, contexts) {
+          var multi = redis.createClient().multi();
+          Object.keys(toCull).forEach(function(email, index) {
+            // Push the email to be culled and its domain onto the expired queue.
+            // The bid module will take it from there and tell the IdP to delete
+            // the account.
+
+            // The data will actually be delete by bid.cancelAccount
+            // Which indicates that these functions belong back in the bid module ...
+            multi.rpush('ptu:expired', JSON.stringify(contexts[index]));
+            numCulled ++;
+            console.log("expired email: " + email);
+          });
+          multi.exec(function(err, results) {
+            if (err) {
+              return callback(err);
+            } else {
+              return callback(null);
+            }
+          });
+        });
+      });
+    });
+  ;}
+
+  this._periodicallyCullUsers = function _periodicallyCullUsers(interval) {
+    // by default, cull every minute
+    interval = interval || ONE_MIN_IN_SECONDS;
+
+    // make sure this only gets called once
+    if (this._alreadyCulling === true) return;
+    this._alreadyCulling = true;
+
+    function cullUsers() {
+      var one_hour_ago = unixTime() - ONE_HOUR_IN_SECONDS;
+
+      self._cullOldEmails(one_hour_ago, function(err, n) {
+        setTimeout(cullUsers, interval);
+      });
+    }
+
+    cullUsers();
+  };
 
 
   // The verifier waits for emails to arrive from the IdP asking the
@@ -103,7 +176,7 @@ var API = module.exports = function API(config, onready) {
     // we will assign the exact email below
     var email;
 
-    getRedisClient().incr('ptu:nextval', function(err, val) {
+    redis.createClient().incr('ptu:nextval', function(err, val) {
       email = name + val + '@' + DEFAULT_DOMAIN;
       var expires = unixTime() + ONE_HOUR_IN_SECONDS;
       var data = {
@@ -112,7 +185,7 @@ var API = module.exports = function API(config, onready) {
         expires: expires,
         env: serverEnv
       };
-      var multi = getRedisClient().multi();
+      var multi = redis.createClient().multi();
       multi.zadd('ptu:emails:staging', expires, email);
       multi.hmset('ptu:email:'+email, data);
       multi.exec(function(err) {
@@ -132,7 +205,7 @@ var API = module.exports = function API(config, onready) {
         function(it_worked) {
           if (it_worked) {
             self.emit('message', "Received " + email);
-            getRedisClient().hgetall('ptu:email:'+email, callback);
+            redis.createClient().hgetall('ptu:email:'+email, callback);
           } else {
             self.emit('error', "Timed out waiting for " + email);
             callback("Timed out waiting for " + email);
@@ -144,7 +217,7 @@ var API = module.exports = function API(config, onready) {
   this._getEmail = function _getEmail(serverEnv, do_verify, callback) {
     self._generateNewEmail(serverEnv, function(err, data) {
       if (err) return callback(err);
-      getRedisClient().hset('ptu:email:'+data.email, 'do_verify', do_verify, function(err) {
+      redis.createClient().hset('ptu:email:'+data.email, 'do_verify', do_verify, function(err) {
         if (err) return callback(err);
         bid.createUser(vconf[serverEnv], data.email, data.pass, function(err) {
           if (err) {
@@ -167,7 +240,7 @@ var API = module.exports = function API(config, onready) {
       return callback("params missing required email");
     }
     jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
-      getRedisClient().hmset('ptu:email:'+params.email, {
+      redis.createClient().hmset('ptu:email:'+params.email, {
         publicKey: kp.publicKey.serialize(),
         secretKey: kp.secretKey.serialize()
       }, function(err) {
@@ -232,7 +305,7 @@ var API = module.exports = function API(config, onready) {
 
   this.getUserData = function getEmailData(email, pass, callback) {
     // get the email data if the caller knows the right password
-    getRedisClient().hgetall('ptu:email:'+email, function(err, data) {
+    redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
       if (!data || data.pass !== pass) {
         return callback("Username and password do not match");
       }
@@ -292,6 +365,7 @@ var API = module.exports = function API(config, onready) {
     });
   };
 
+  this._periodicallyCullUsers();
   return this;
 };
 util.inherits(API, events.EventEmitter);

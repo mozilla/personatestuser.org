@@ -4,7 +4,8 @@
 
 const util = require('util'),
       events = require('events'),
-      getRedisClient = require('./db').getRedisClient,
+      redis = require('redis'),
+      redisConf = require('./config'),
       vconf = require('./vconf'),
       wsapi = require('./wsapi_client');
 
@@ -26,8 +27,7 @@ var Verifier = function Verifier() {
   this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (userData, callback) {
     var email = userData.email;
     var expires = userData.expires;
-    getRedisClient()
-      .multi()
+    redis.createClient().multi()
       .zadd('ptu:emails:valid', expires, email)
       .zrem('ptu:emails:staging', email)
       .exec(function(err, results) {
@@ -61,8 +61,7 @@ var Verifier = function Verifier() {
    * provider.
    */
   this._startCancelingExpiredEmails = function _startCancelingExpiredEmails() {
-    var cli = getRedisClient();
-    cli.blpop('ptu:expired', 0, function(err, data) {
+    redis.createClient().blpop('ptu:expired', 0, function(err, data) {
       // data is a tuple like [qname, data]
       // where data contains a context of an expired account
       try {
@@ -84,9 +83,7 @@ var Verifier = function Verifier() {
   };
 
   this._startVerifyingEmails = function _startVerifyingEmails() {
-    var cli = getRedisClient();
-
-    cli.blpop('ptu:mailq', 0, function(err, data) {
+    redis.createClient().blpop('ptu:mailq', 0, function(err, data) {
       // data is a tuple like [qname, data]
       try {
         data = JSON.parse(data[1]);
@@ -107,7 +104,7 @@ var Verifier = function Verifier() {
 
       // Stash the token, which is necessary to complete the bid
       // verification process, and then get all the data on this user
-	  var multi = cli.multi();
+	  var multi = redis.createClient().multi();
       multi.hset('ptu:email:'+email, 'token', token);
       multi.hgetall('ptu:email:'+email);
       multi.exec(function(err, results) {
@@ -205,7 +202,7 @@ var _getAddressInfo = function _getAddressInfo(config, context, callback) {
 };
 
 var authenticateUser = function authenticateUser(config, email, pass, callback) {
-  getRedisClient().hget('ptu:email:'+email, 'context', function(err, data) {
+  redis.createClient().hget('ptu:email:'+email, 'context', function(err, data) {
     var context = JSON.parse(data);
     console.log("bid.authenticate user " + context.email);
     wsapi.post(config, '/wsapi/authenticate_user', context, {
@@ -227,7 +224,7 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
         var key = 'ptu:email:'+context.email;
         cookieJar[set_cookie[0]] = set_cookie[1];
         context.cookieJar = cookieJar;
-        var multi = getRedisClient().multi();
+        var multi = redis.createClient().multi();
         multi.hset(key, 'userid', body.userid);
         multi.hset(key, 'context', JSON.stringify(context));
         multi.exec(function(err, result) {
@@ -286,8 +283,7 @@ var createUser = function createUser(config, email, pass, callback) {
         // continue our conversation with the server later
         // to get a cert.
 
-        var cli = getRedisClient();
-        cli.hset('ptu:email:'+email, 'context', JSON.stringify(context), function(err) {
+        redis.createClient().hset('ptu:email:'+email, 'context', JSON.stringify(context), function(err) {
           // Now we wait for an email to return from browserid.
           // The email will be received by bin/email, which will
           // push the email address and token pair into a redis
@@ -300,7 +296,7 @@ var createUser = function createUser(config, email, pass, callback) {
 };
 
 var certifyKey = function certifyKey(config, email, pubkey, callback) {
-  getRedisClient().hgetall('ptu:email:'+email, function(err, data) {
+  redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
     if (err) return callback(err);
     try {
       var context = JSON.parse(data.context);
@@ -327,7 +323,7 @@ var cancelAccount = function cancelAccount(serverEnv, context, callback) {
   // Either way, remove the user from the redis db.
   var email = context.email;
   if (email) {
-    getRedisClient().multi()
+    redis.createClient().multi()
       .del('ptu:email:'+email)
       .zrem('ptu:emails:staging', email)
       .zrem('ptu:emails:valid', email)
