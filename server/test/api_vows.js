@@ -44,7 +44,7 @@ vows.describe("API vows")
     },
 
     "gives us a valid email and password": function(data) {
-      assert(data.expires > (new Date()).getTime());
+      assert(data.expires >= (new Date()).getTime() / 1000);
       assert(data.email.indexOf('@') > 0);
       assert(data.password.length >= 16);
     },

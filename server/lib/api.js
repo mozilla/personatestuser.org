@@ -5,11 +5,12 @@ const jwcrypto = require('jwcrypto'),
       events = require('events'),
       path = require('path'),
       bid = require('./bid'),
+      unixTime = require('./time').unixTime,
       getRedisClient = require('./db').getRedisClient,
       vconf = require('./vconf'),
       ALGORITHM = "RS",
       KEYSIZE = 256,
-      ONE_HOUR_IN_MS = 60 * 60 * 1000;
+      ONE_HOUR_IN_SECONDS;
 
 // Import the jwcrypto algorithms
 require('jwcrypto/lib/algs/rs');
@@ -104,7 +105,7 @@ var API = module.exports = function API(config, onready) {
 
     getRedisClient().incr('ptu:nextval', function(err, val) {
       email = name + val + '@' + DEFAULT_DOMAIN;
-      var expires = (new Date()).getTime() + ONE_HOUR_IN_MS;
+      var expires = unixTime() + ONE_HOUR_IN_SECONDS;
       var data = {
         email: email,
         pass: pass,
@@ -258,8 +259,8 @@ var API = module.exports = function API(config, onready) {
       return callback(new Error("required param missing"));
     }
 
-    var now = new Date();
-    var expiresAt = new Date(now.getTime() + duration);
+    // Set the expiration date in unix time, not JavaScript time
+    var expiresAt = unixTime() + duration;
 
     self._generateKeypair(userData, function(err, kp) {
       bid.authenticateUser(serverEnv, email, pass, function(err) {
@@ -277,7 +278,7 @@ var API = module.exports = function API(config, onready) {
                  pass: userData.pass,
                  expires: userData.expires,
                  env: userData.env,
-                 browseridb: serverEnv.browserid,
+                 browserid: serverEnv.browserid,
                  verifier: serverEnv.verifier,
                  audience: audience,
                  assertion: assertion,

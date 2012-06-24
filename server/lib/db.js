@@ -1,4 +1,8 @@
-var redis = require('redis');
+const redis = require('redis'),
+      unixTime = require('./time').unixTime,
+      ONE_MIN_IN_SECONDS = 60,
+      ONE_HOUR_IN_SECONDS = 60 * ONE_MIN_IN_SECONDS;
+
 var _culling = false;
 
   // get default config from env
@@ -65,15 +69,14 @@ function _cullOldEmails(age, callback) {
 
 function periodicallyCullUsers(interval) {
   // by default, cull every minute
-  interval = interval || 60000;
+  interval = interval || ONE_MIN_IN_SECONDS;
 
   // make sure this only gets called once
   if (_culling === true) return;
   _culling = true;
 
   function cullUsers() {
-    var now = (new Date()).getTime();
-    var one_hour_ago = now - (60 *60);
+    var one_hour_ago = unixTime() - ONE_HOUR_IN_SECONDS;
 
     _cullOldEmails(one_hour_ago, function(err, n) {
       setTimeout(cullUsers, interval);
