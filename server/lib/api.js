@@ -127,21 +127,19 @@ var API = module.exports = function API(config, onready) {
 
   this._periodicallyCullUsers = function _periodicallyCullUsers(interval) {
     // by default, cull every minute
-    interval = interval || ONE_MIN_IN_SECONDS;
+    var interval_ms = (interval || ONE_MIN_IN_SECONDS) * 1000;
 
     // make sure this only gets called once
     if (this._alreadyCulling === true) return;
     this._alreadyCulling = true;
 
-    function cullUsers() {
+    setInterval(function cullUsers() {
       var one_hour_ago = unixTime() - ONE_HOUR_IN_SECONDS;
 
       self._cullOldEmails(one_hour_ago, function(err, n) {
-        setTimeout(cullUsers, interval);
+        if (err) console.log("ERROR: _cullOldEmails returned: " + err);
       });
-    }
-
-    cullUsers();
+    }, interval_ms);
   };
 
 
