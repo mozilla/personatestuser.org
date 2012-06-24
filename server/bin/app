@@ -117,7 +117,7 @@ app.get('/assertion/:audience/email/:email/password/:password', function getAsse
 });
 
 app.get('/assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
-  api.getVerifiedEmail(req.param('env'), function(err, data) {
+  api.getVerifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err || !data) {
       res.writeHead(500);
       return res.end();
