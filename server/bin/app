@@ -4,18 +4,7 @@
 /**
  * persona test user generator
  *
- * API:
- *
- *   /test_user
- *     Create a test user account with an IdP
- *     Returns JSON: {email: <account email>,
- *                    pass: <account password>,
- *                    expires: <expiration date>}
- *
- *   /assertion/:email/:pass/:audience
- *     Create an assertion for the user with the audience
- *     XXX Not yet implemented
- *
+ * see README.md for documentation
  */
 
 const express = require('express'),

@@ -25,32 +25,61 @@ optional final argument *env* may be applied.  This may be one of
 `prod`, `dev`, `stage`, and `local`.  It specifies which development
 environment to query.
 
+All queries return a JSON string on success with some or all of the
+following fields:
+
+- `email` An email to use as an identity
+- `pass` The password for the account
+- `token` A verification token for use with the identity provider
+- `expires` Expiration date in seconds since the epoch
+- `env` The name of the server environment ("prod", "dev", "stage", or "local")
+- `browserid` The url for the IdP specified by env
+- `verifier` The url for the verifier specified by env
+- `audience` The audience an assertion is valid for
+- `assertion` An identity assertion for a given audience
+- `cert` An identity certificate from the IdP for the email
+- `bundle` A bundled assertion and certificate
+
+### New Verified Email
+
     GET /email/verified[/<env>]
 
-Get a verified email and password.
+Creates an identity that will be valid for an hour.
+
+### New Unverified Email
 
     GET /email/unverified[/<env>]
 
-Get an unverified email, password, and verification token.
+Stages a new identity with the IdP.  Use the returned verification
+token to complete the account creation.
+
+### New Assertion and Email
 
     GET /assertion/<audience>[/<env>]
 
 Get a new verified email and an assertion, valid for two minutes, for
 the named audience.
 
+### New Assertion
+
+Like the above, but with explicit parameters for an existing email and
+password.  Does not create a new account.
+
     GET /assertion/<audience>/email/<email>/password/<password>
 
-[Not implemented yet]  
-With the specified email and password, get an assertion, valid for two
-minutes, for the named audience.  Note that *env* is not an option,
-since the email has already been created for a certain server
-environment.
+Note that *env* is not an option, since the email has already been
+created for a certain server environment.
+
+### Cancel Account
 
     GET /cancel/email/<email>/password/<password>
 
 Cancel the email account for given email and password.  Note that
-*env* is not an option in this quiery, since the email has already
+*env* is not an option in this query, since the email has already
 been create for a certain env.
+
+You do not need to cancel accounts created with this tool.  Email
+accounts are automatically canceled with the IdP after one hour.
 
 
 
