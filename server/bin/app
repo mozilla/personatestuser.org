@@ -115,7 +115,7 @@ app.get('/assertion/:audience/:email/:password', function getAssertion(req, res)
   return _getAssertion(req.param('email'), req.param('password'), req.param('audience'), req, res);
 });
 
-app.get('/assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
+app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
   api.getVerifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err || !data) {
       res.writeHead(500);
