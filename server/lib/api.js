@@ -352,9 +352,7 @@ var API = module.exports = function API(config, onready) {
                  browserid: serverEnv.browserid,
                  verifier: serverEnv.verifier,
                  audience: audience,
-                 assertion: assertion,
-                 cert: cert,
-                 bundle: bundle
+                 assertion: bundle
               });
             }
           );
