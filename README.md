@@ -42,20 +42,20 @@ following fields:
 
 ### New Verified Email
 
-    GET /email/verified[/<env>]
+    GET /email[/<env>]
 
 Creates an identity that will be valid for an hour.
 
 ### New Unverified Email
 
-    GET /email/unverified[/<env>]
+    GET /unverified_email[/<env>]
 
 Stages a new identity with the IdP.  Use the returned verification
 token to complete the account creation.
 
 ### New Assertion and Email
 
-    GET /assertion/<audience>[/<env>]
+    GET /email_with_assertion/<audience>[/<env>]
 
 Get a new verified email and an assertion, valid for two minutes, for
 the named audience.
@@ -65,14 +65,14 @@ the named audience.
 Like the above, but with explicit parameters for an existing email and
 password.  Does not create a new account.
 
-    GET /assertion/<audience>/email/<email>/password/<password>
+    GET /assertion/<audience>/<email>/<password>
 
 Note that *env* is not an option, since the email has already been
 created for a certain server environment.
 
 ### Cancel Account
 
-    GET /cancel/email/<email>/password/<password>
+    GET /cancel/<email>/<password>
 
 Cancel the email account for given email and password.  Note that
 *env* is not an option in this query, since the email has already

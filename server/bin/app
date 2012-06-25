@@ -60,7 +60,7 @@ app.get('/', function(req, res) {
   res.render('index');
 });
 
-app.get('/email/verified/:env?', verifyEnv, function getVerifiedEmail(req, res) {
+app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
   api.getVerifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err) {
       res.writeHead(500);
@@ -71,7 +71,7 @@ app.get('/email/verified/:env?', verifyEnv, function getVerifiedEmail(req, res) 
   });
 });
 
-app.get('/email/unverified/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
+app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
   api.getUnverifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err) {
       res.writeHead(500);
@@ -111,9 +111,8 @@ function _getAssertion(email, password, audience, req, res) {
   });
 };
 
-app.get('/assertion/:audience/email/:email/password/:password', function getAssertion(req, res) {
+app.get('/assertion/:audience/:email/:password', function getAssertion(req, res) {
   return _getAssertion(req.param('email'), req.param('password'), req.param('audience'), req, res);
-
 });
 
 app.get('/assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
