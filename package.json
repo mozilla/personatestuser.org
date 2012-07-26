@@ -1,7 +1,7 @@
 {
   "name": "personatestuser",
   "description": "A service that facilitates automated testing of sign-in with persona",
-  "version": "0.0.1",
+  "version": "0.1.0",
 
   "dependencies": {
     "express": "2.5.9",
@@ -9,6 +9,7 @@
     "jwcrypto": "0.2.2",
     "mailparser": "0.2.26",
     "redis": "0.7.2",
+    "request": "2.9.203",
     "smtp-protocol": "0.2.1",
     "socket.io": "0.9.6"
   },

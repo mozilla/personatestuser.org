@@ -10,8 +10,7 @@
  */
 
 const
-http = require('http'),
-https = require('https'),
+request = require('request'),
 url = require('url'),
 querystring = require('querystring');
 
@@ -54,38 +53,23 @@ exports.getCookie = function(ctx, which) {
 exports.injectCookies = injectCookies;
 
 exports.get = function(cfg, path, context, getArgs, cb) {
-  // parse the server URL (cfg.browserid)
-  var uObj;
-  var meth;
-  try {
-    uObj = url.parse(cfg.browserid);
-    meth = uObj.protocol === 'http:' ? http : https;
-  } catch(e) {
-    cb("can't parse url: " + e);
-    return;
-  }
-
   var headers = { };
   injectCookies(context, headers);
 
-  if (typeof getArgs === 'object')
+  if (typeof getArgs === 'object') {
     path += "?" + querystring.stringify(getArgs);
+  }
 
-  meth.get({
-    host: uObj.hostname,
-    port: uObj.port,
-    path: path,
+  request({
+    uri: cfg.browserid + path,
     headers: headers,
-    agent: false // disable node.js connection pooling
-  }, function(res) {
+    followRedirect: true
+  }, function(err, res, body) {
+    if (err) {
+      return cb(err);
+    }
     extractCookies(context, res);
-    var body = '';
-    res.on('data', function(chunk) { body += chunk; })
-    .on('end', function() {
-      cb(null, {code: res.statusCode, headers: res.headers, body: body});
-    });
-  }).on('error', function (e) {
-    cb(e);
+    return cb(null, {code: res.statusCode, headers: res.headers, body: body});
   });
 };
 
@@ -111,16 +95,6 @@ exports.post = function(cfg, path, context, postArgs, cb) {
   withCSRF(cfg, context, function(err, csrf) {
     if (err) return cb(err);
 
-    // parse the server URL (cfg.browserid)
-    var uObj;
-    var meth;
-    try {
-      uObj = url.parse(cfg.browserid);
-      meth = uObj.protocol === 'http:' ? http : https;
-    } catch(e) {
-      cb("can't parse url: " + e);
-      return;
-    }
     var headers = {
       'Content-Type': 'application/json'
     };
@@ -128,29 +102,21 @@ exports.post = function(cfg, path, context, postArgs, cb) {
 
     if (typeof postArgs === 'object') {
       postArgs['csrf'] = csrf;
-      body = JSON.stringify(postArgs);
-      headers['Content-Length'] = body.length;
     }
+    var body = JSON.stringify(postArgs);
+    headers['Content-Length'] = body.length;
 
-    var req = meth.request({
-      host: uObj.hostname,
-      port: uObj.port,
-      path: path,
+    var req = request({
+      uri: cfg.browserid + path,
       headers: headers,
       method: "POST",
-      agent: false // disable node.js connection pooling
-    }, function(res) {
+      body: body
+    }, function(err, res, body) {
+      if (err) {
+        return cb(err);
+      }
       extractCookies(context, res);
-      var body = '';
-      res.on('data', function(chunk) { body += chunk; })
-      .on('end', function() {
-        cb(null, {code: res.statusCode, headers: res.headers, body: body});
-      });
-    }).on('error', function (e) {
-      cb(e);
+      return cb(null, {code: res.statusCode, headers: res.headers, body: body});
     });
-
-    req.write(body);
-    req.end();
   });
 };
