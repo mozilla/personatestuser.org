@@ -78,7 +78,6 @@ var API = module.exports = function API(config, onready) {
 
   this._cullOldEmails = function _cullOldEmails(age, callback) {
     var toCull = {};
-    var numCulled = 0;
     var email;
 
     // asynchronously cull the outdated emails in valid and staging
@@ -96,30 +95,23 @@ var API = module.exports = function API(config, onready) {
 
         // we need to get the env for each email so we know how to
         // delete the account
+        console.log("emails to cull: " + JSON.stringify(toCull));
         var multi = redis.createClient().multi();
         Object.keys(toCull).forEach(function(email) {
-          multi.hmget('ptu:email:'+email, 'env', 'context');
+          multi.hmget('ptu:email:'+email, 'email', 'pass', 'env');
         });
         multi.exec(function(err, contexts) {
-          var multi = redis.createClient().multi();
-          Object.keys(toCull).forEach(function(email, index) {
+          if (err) return callback(err);
+          contexts.forEach(function(context) {
             // Push the email to be culled and its domain onto the expired queue.
             // The bid module will take it from there and tell the IdP to delete
             // the account.
 
             // The data will actually be delete by bid.cancelAccount
             // Which indicates that these functions belong back in the bid module ...
-            multi.rpush('ptu:expired', JSON.stringify(contexts[index]));
-            numCulled ++;
-            console.log("expired email: " + email);
+            multi.rpush('ptu:expired', JSON.stringify(context));
           });
-          multi.exec(function(err, results) {
-            if (err) {
-              return callback(err);
-            } else {
-              return callback(null);
-            }
-          });
+          return callback(null);
         });
       });
     });

@@ -67,9 +67,9 @@ var Verifier = function Verifier() {
       console.log("blpopped from ptu:expired: " + data);
       try {
         data = JSON.parse(data[1]);
-        var env = data[0];
-        var context = JSON.parse(data[1]);
-        cancelAccount(env, context, function(err) {
+        var email = data[0];
+        var env = data[1];
+        cancelAccount(email, env, function(err) {
           if (err) console.log("ERROR: cancelAccount returned: " + err);
         });
       } catch (err) {
@@ -244,10 +244,15 @@ var stageUser = function stageUser(config, context, callback) {
     pass: context.pass,
     site: context.site
   }, function(err, res) {
-    if (err || res.statusCode !== 200) {
+    if (err) return callback(err);
+
+    if (!res) {
+      return callback("ERROR: stageUser: wsapi.post did not return a response");
+    }
+
+    if (res.statusCode !== 200) {
       console.log("ERROR: stageUser: err=" + err + ", server code=" + res.statusCode);
     }
-    if (err) return callback(err);
 
     if (res.statusCode === 429) {
       // too many requests!
@@ -318,20 +323,23 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
   });
 };
 
-var cancelAccount = function cancelAccount(serverEnv, context, callback) {
+var cancelAccount = function cancelAccount(context, callback) {
   // Authenticate with the context and then cancel the account
 
   // Either way, remove the user from the redis db.
-  var email = context.email;
-  if (email) {
+  if (context.email) {
     redis.createClient().multi()
-      .del('ptu:email:'+email)
-      .zrem('ptu:emails:staging', email)
-      .zrem('ptu:emails:valid', email)
+      .del('ptu:email:'+context.email)
+      .zrem('ptu:emails:staging', context.email)
+      .zrem('ptu:emails:valid', context.email)
       .exec();
   }
+  if (Object.keys(vconf).indexOf(context.env) === -1) {
+    // if env is not prod, dev, or stage, then default to prod
+    context.env = 'prod';
+  }
 
-  wsapi.post(vconf[serverEnv], '/wsapi/authenticate_user', context, {
+  wsapi.post(vconf[context.env], '/wsapi/authenticate_user', context, {
     email: context.email,
     pass: context.pass,
     ephemeral: true
@@ -354,7 +362,7 @@ var cancelAccount = function cancelAccount(serverEnv, context, callback) {
     context.cookieJar = cookieJar;
 
     // Now cancel the account
-    wsapi.post(vconf[serverEnv], '/wsapi/account_cancel', context, {
+    wsapi.post(vconf[context.env], '/wsapi/account_cancel', context, {
       email: context.email,
       pass: context.pass
     }, function(err, res) {
