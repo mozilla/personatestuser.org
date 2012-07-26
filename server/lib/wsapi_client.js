@@ -70,26 +70,27 @@ exports.get = function(cfg, path, context, getArgs, cb) {
       return cb(err);
     }
     extractCookies(context, res);
-    return cb(null, {code: res.statusCode, headers: res.headers, body: body});
+    return cb(null, {statusCode: res.statusCode, headers: res.headers, body: body});
   });
 };
 
 function withCSRF(cfg, context, cb) {
-  if (context.session && context.session.csrf_token) cb(null, context.session.csrf_token);
-  else {
-    exports.get(cfg, '/wsapi/session_context', context, undefined, function(err, r) {
-      if (err) return cb(err);
-      try {
-        if (r.code !== 200) throw 'http error';
-        context.session = JSON.parse(r.body);
-        context.sessionStartedAt = new Date().getTime();
-        cb(null, context.session.csrf_token);
-      } catch(e) {
-        console.log('error getting csrf token: ', e);
-        cb(e);
-      }
-    });
+  if (context.session && context.session.csrf_token) {
+    return cb(null, context.session.csrf_token);
   }
+
+  exports.get(cfg, '/wsapi/session_context', context, undefined, function(err, res) {
+    if (err) return cb(err);
+    try {
+      if (res.statusCode !== 200) throw 'http error';
+      context.session = JSON.parse(res.body);
+      context.sessionStartedAt = new Date().getTime();
+      return cb(null, context.session.csrf_token);
+    } catch(err) {
+      console.log('error getting csrf token: ', err);
+      return cb(err);
+    }
+  });
 }
 
 exports.post = function(cfg, path, context, postArgs, cb) {
@@ -111,6 +112,7 @@ exports.post = function(cfg, path, context, postArgs, cb) {
       uri: cfg.browserid + path,
       headers: headers,
       method: "POST",
+      followAllRedirects: true,
       body: body
     }, function(err, res, body) {
       if (err) {
@@ -118,7 +120,7 @@ exports.post = function(cfg, path, context, postArgs, cb) {
         return cb(err);
       }
       extractCookies(context, res);
-      return cb(null, {code: res.statusCode, headers: res.headers, body: body});
+      return cb(null, {statusCode: res.statusCode, headers: res.headers, body: body});
     });
   });
 };

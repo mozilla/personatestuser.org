@@ -43,15 +43,15 @@ var Verifier = function Verifier() {
       token: userData.token,
       pass: userData.pass
     }, function(err, res) {
-      if (res.code !== 200) {
-        err = "Server returned " + res.code;
-      }
-
       if (err) {
         return callback("Can't complete user creation: " + err);
-      } else {
-        self._stagedEmailBecomesLive(userData, callback);
       }
+
+      if (res.statusCode !== 200) {
+        return callback("Server returned " + res.statusCode);
+      }
+
+      self._stagedEmailBecomesLive(userData, callback);
     });
   };
 
@@ -64,6 +64,7 @@ var Verifier = function Verifier() {
     redis.createClient().blpop('ptu:expired', 0, function(err, data) {
       // data is a tuple like [qname, data]
       // where data contains a context of an expired account
+      console.log("blpopped from ptu:expired: " + data);
       try {
         data = JSON.parse(data[1]);
         var env = data[0];
@@ -151,9 +152,9 @@ var getSessionContext = function getSessionContext(config, context, callback) {
       return callback(err);
     }
 
-    if (res.code !== 200) {
-      console.log("ERROR: getSessionContext: server status: " + res.code);
-      return callback(new Error("Can't get session context: server status " + res.code));
+    if (res.statusCode !== 200) {
+      console.log("ERROR: getSessionContext: server status: " + res.statusCode);
+      return callback(new Error("Can't get session context: server status " + res.statusCode));
     }
 
     // body of the response is a JSON string like
@@ -191,8 +192,8 @@ var _getAddressInfo = function _getAddressInfo(config, context, callback) {
       console.log("ERROR: _getAddressInfo: " + err);
       return callback(err);
     }
-    if (res.code !== 200) {
-      return callback(new Error("Can't get address info: server status " + res.code));
+    if (res.statusCode !== 200) {
+      return callback(new Error("Can't get address info: server status " + res.statusCode));
     }
 
     context.address_info = JSON.parse(res.body);
@@ -210,8 +211,8 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
       pass: pass,
       ephemeral: true
     }, function(err, res) {
-      if (res.code !== 200) {
-        return callback("ERROR: authenticateUser: server returned " + res.code);
+      if (res.statusCode !== 200) {
+        return callback("ERROR: authenticateUser: server returned " + res.statusCode);
       }
 
       var body = JSON.parse(res.body);
@@ -243,18 +244,18 @@ var stageUser = function stageUser(config, context, callback) {
     pass: context.pass,
     site: context.site
   }, function(err, res) {
-    if (err || res.code !== 200) {
-      console.log("ERROR: stageUser: err=" + err + ", server code=" + res.code);
+    if (err || res.statusCode !== 200) {
+      console.log("ERROR: stageUser: err=" + err + ", server code=" + res.statusCode);
     }
     if (err) return callback(err);
 
-    if (res.code === 429) {
+    if (res.statusCode === 429) {
       // too many requests!
       return callback(new Error("Can't stage user: we're flooding the server"));
     }
 
-    if (res.code !== 200) {
-      return callback(new Error("Can't stage user: server status " + res.code));
+    if (res.statusCode !== 200) {
+      return callback(new Error("Can't stage user: server status " + res.statusCode));
     }
 
     return callback(null);
@@ -335,8 +336,8 @@ var cancelAccount = function cancelAccount(serverEnv, context, callback) {
     pass: context.pass,
     ephemeral: true
   }, function(err, res) {
-    if (err || res.code !== 200) {
-      return callback("ERROR: cancelAccount: authenticateUser: server code " + res.code);
+    if (err || res.statusCode !== 200) {
+      return callback("ERROR: cancelAccount: authenticateUser: server code " + res.statusCode);
     }
 
     // Get the new authentication cookie and save it in our context
@@ -360,8 +361,8 @@ var cancelAccount = function cancelAccount(serverEnv, context, callback) {
       if (err) {
         return callback("ERROR: cancelAccount: " + err);
       }
-      if (res.code !== 200) {
-        return callback("ERROR: cancelAccount: server returned status " + res.code);
+      if (res.statusCode !== 200) {
+        return callback("ERROR: cancelAccount: server returned status " + res.statusCode);
       }
       return callback(null);
     });
