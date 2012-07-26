@@ -66,6 +66,7 @@ exports.get = function(cfg, path, context, getArgs, cb) {
     followRedirect: true
   }, function(err, res, body) {
     if (err) {
+      console.log("ERROR: wsapi_client.get: " + err);
       return cb(err);
     }
     extractCookies(context, res);
@@ -113,6 +114,7 @@ exports.post = function(cfg, path, context, postArgs, cb) {
       body: body
     }, function(err, res, body) {
       if (err) {
+        console.log("ERROR: wsapi_client.post: " + err);
         return cb(err);
       }
       extractCookies(context, res);
