@@ -48,7 +48,7 @@ div
   dl
     dt Verified Email
     dd
-      code GET /email/verified
+      code GET /email
         span.option /:env
       p Get a new, verified email and password.  
         a(class='function', href='/email', id='submit-email-verified') Try it!
@@ -59,7 +59,7 @@ div
 
     dt Unverified Email
     dd
-      code GET /email/unverified
+      code GET /unverified_email
         span.option /:env
       p Get an email, password, and verification token.  
         a(class='function', href='/unverified_email', id='submit-email-unverified') Try it!
@@ -79,7 +79,6 @@ div
     dd
       code GET /assertion/
         span.param :audience
-        | /email/
         span.param :email
         span.param :password
       p Get an assertion, using a valid email and password, for the given audience.
