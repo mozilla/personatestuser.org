@@ -63,6 +63,7 @@ app.get('/', function(req, res) {
 app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
   api.getVerifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err) {
+      console.log("ERROR: getVerifiedEmail: " + err);
       res.writeHead(500);
       return res.end();
     }
@@ -74,6 +75,7 @@ app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
 app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
   api.getUnverifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err) {
+      console.log("ERROR: getUnverifiedEmail: " + err);
       res.writeHead(500);
       return res.end();
     }
@@ -85,6 +87,7 @@ app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, r
 app.get('/cancel/email/:email/password/:password', function cancelAccount(req, res) {
   api.cancelAccount(req.param('email'), req.param('password'), function(err, data) {
     if (err) {
+      console.log("ERROR: cancelAccount: " + err);
       res.writeHead(500);
       return res.end();
     }
@@ -97,11 +100,13 @@ function _getAssertion(email, password, audience, req, res) {
   // utility function for assertion getters below
   api.getUserData(email, password, function(err, userData) {
     if (err) {
+      console.log("ERROR: getUserData: " + err);
       res.writeHead(400);
       return res.end();
     }
     api.getAssertion(userData, audience, function(err, results) {
       if (err || !results) {
+        console.log("ERROR: getAssertion: " + err);
         res.writeHead(500);
         return res.end();
       }
@@ -118,6 +123,7 @@ app.get('/assertion/:audience/:email/:password', function getAssertion(req, res)
 app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
   api.getVerifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err || !data) {
+      console.log("ERROR: getVerifiedEmail: " + err);
       res.writeHead(500);
       return res.end();
     }
