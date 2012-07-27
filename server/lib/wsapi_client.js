@@ -10,8 +10,7 @@
  */
 
 const
-http = require('http'),
-https = require('https'),
+request = require('request'),
 url = require('url'),
 querystring = require('querystring');
 
@@ -54,73 +53,50 @@ exports.getCookie = function(ctx, which) {
 exports.injectCookies = injectCookies;
 
 exports.get = function(cfg, path, context, getArgs, cb) {
-  // parse the server URL (cfg.browserid)
-  var uObj;
-  var meth;
-  try {
-    uObj = url.parse(cfg.browserid);
-    meth = uObj.protocol === 'http:' ? http : https;
-  } catch(e) {
-    cb("can't parse url: " + e);
-    return;
-  }
-
   var headers = { };
   injectCookies(context, headers);
 
-  if (typeof getArgs === 'object')
+  if (typeof getArgs === 'object') {
     path += "?" + querystring.stringify(getArgs);
+  }
 
-  meth.get({
-    host: uObj.hostname,
-    port: uObj.port,
-    path: path,
+  request({
+    uri: cfg.browserid + path,
     headers: headers,
-    agent: false // disable node.js connection pooling
-  }, function(res) {
+    followRedirect: true
+  }, function(err, res, body) {
+    if (err) {
+      console.log("ERROR: wsapi_client.get: " + err);
+      return cb(err);
+    }
     extractCookies(context, res);
-    var body = '';
-    res.on('data', function(chunk) { body += chunk; })
-    .on('end', function() {
-      cb(null, {code: res.statusCode, headers: res.headers, body: body});
-    });
-  }).on('error', function (e) {
-    cb(e);
+    return cb(null, {statusCode: res.statusCode, headers: res.headers, body: body});
   });
 };
 
 function withCSRF(cfg, context, cb) {
-  if (context.session && context.session.csrf_token) cb(null, context.session.csrf_token);
-  else {
-    exports.get(cfg, '/wsapi/session_context', context, undefined, function(err, r) {
-      if (err) return cb(err);
-      try {
-        if (r.code !== 200) throw 'http error';
-        context.session = JSON.parse(r.body);
-        context.sessionStartedAt = new Date().getTime();
-        cb(null, context.session.csrf_token);
-      } catch(e) {
-        console.log('error getting csrf token: ', e);
-        cb(e);
-      }
-    });
+  if (context.session && context.session.csrf_token) {
+    return cb(null, context.session.csrf_token);
   }
+
+  exports.get(cfg, '/wsapi/session_context', context, undefined, function(err, res) {
+    if (err) return cb(err);
+    try {
+      if (res.statusCode !== 200) throw 'http error';
+      context.session = JSON.parse(res.body);
+      context.sessionStartedAt = new Date().getTime();
+      return cb(null, context.session.csrf_token);
+    } catch(err) {
+      console.log('error getting csrf token: ', err);
+      return cb(err);
+    }
+  });
 }
 
 exports.post = function(cfg, path, context, postArgs, cb) {
   withCSRF(cfg, context, function(err, csrf) {
     if (err) return cb(err);
 
-    // parse the server URL (cfg.browserid)
-    var uObj;
-    var meth;
-    try {
-      uObj = url.parse(cfg.browserid);
-      meth = uObj.protocol === 'http:' ? http : https;
-    } catch(e) {
-      cb("can't parse url: " + e);
-      return;
-    }
     var headers = {
       'Content-Type': 'application/json'
     };
@@ -128,29 +104,23 @@ exports.post = function(cfg, path, context, postArgs, cb) {
 
     if (typeof postArgs === 'object') {
       postArgs['csrf'] = csrf;
-      body = JSON.stringify(postArgs);
-      headers['Content-Length'] = body.length;
     }
+    var body = JSON.stringify(postArgs);
+    headers['Content-Length'] = body.length;
 
-    var req = meth.request({
-      host: uObj.hostname,
-      port: uObj.port,
-      path: path,
+    var req = request({
+      uri: cfg.browserid + path,
       headers: headers,
       method: "POST",
-      agent: false // disable node.js connection pooling
-    }, function(res) {
+      followAllRedirects: true,
+      body: body
+    }, function(err, res, body) {
+      if (err) {
+        console.log("ERROR: wsapi_client.post: " + err);
+        return cb(err);
+      }
       extractCookies(context, res);
-      var body = '';
-      res.on('data', function(chunk) { body += chunk; })
-      .on('end', function() {
-        cb(null, {code: res.statusCode, headers: res.headers, body: body});
-      });
-    }).on('error', function (e) {
-      cb(e);
+      return cb(null, {statusCode: res.statusCode, headers: res.headers, body: body});
     });
-
-    req.write(body);
-    req.end();
   });
 };

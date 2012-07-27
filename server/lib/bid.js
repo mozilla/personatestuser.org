@@ -43,15 +43,15 @@ var Verifier = function Verifier() {
       token: userData.token,
       pass: userData.pass
     }, function(err, res) {
-      if (res.code !== 200) {
-        err = "Server returned " + res.code;
-      }
-
       if (err) {
         return callback("Can't complete user creation: " + err);
-      } else {
-        self._stagedEmailBecomesLive(userData, callback);
       }
+
+      if (res.statusCode !== 200) {
+        return callback("Server returned " + res.statusCode);
+      }
+
+      self._stagedEmailBecomesLive(userData, callback);
     });
   };
 
@@ -66,9 +66,9 @@ var Verifier = function Verifier() {
       // where data contains a context of an expired account
       try {
         data = JSON.parse(data[1]);
-        var env = data[0];
-        var context = JSON.parse(data[1]);
-        cancelAccount(env, context, function(err) {
+        var email = data[0];
+        var env = data[1];
+        cancelAccount(email, env, function(err) {
           if (err) console.log("ERROR: cancelAccount returned: " + err);
         });
       } catch (err) {
@@ -151,9 +151,9 @@ var getSessionContext = function getSessionContext(config, context, callback) {
       return callback(err);
     }
 
-    if (res.code !== 200) {
-      console.log("ERROR: getSessionContext: server status: " + res.code);
-      return callback(new Error("Can't get session context: server status " + res.code));
+    if (res.statusCode !== 200) {
+      console.log("ERROR: getSessionContext: server status: " + res.statusCode);
+      return callback(new Error("Can't get session context: server status " + res.statusCode));
     }
 
     // body of the response is a JSON string like
@@ -191,8 +191,8 @@ var _getAddressInfo = function _getAddressInfo(config, context, callback) {
       console.log("ERROR: _getAddressInfo: " + err);
       return callback(err);
     }
-    if (res.code !== 200) {
-      return callback(new Error("Can't get address info: server status " + res.code));
+    if (res.statusCode !== 200) {
+      return callback(new Error("Can't get address info: server status " + res.statusCode));
     }
 
     context.address_info = JSON.parse(res.body);
@@ -210,8 +210,8 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
       pass: pass,
       ephemeral: true
     }, function(err, res) {
-      if (res.code !== 200) {
-        return callback("ERROR: authenticateUser: server returned " + res.code);
+      if (res.statusCode !== 200) {
+        return callback("ERROR: authenticateUser: server returned " + res.statusCode);
       }
 
       var body = JSON.parse(res.body);
@@ -243,18 +243,23 @@ var stageUser = function stageUser(config, context, callback) {
     pass: context.pass,
     site: context.site
   }, function(err, res) {
-    if (err || res.code !== 200) {
-      console.log("ERROR: stageUser: err=" + err + ", server code=" + res.code);
-    }
     if (err) return callback(err);
 
-    if (res.code === 429) {
+    if (!res) {
+      return callback("ERROR: stageUser: wsapi.post did not return a response");
+    }
+
+    if (res.statusCode !== 200) {
+      console.log("ERROR: stageUser: err=" + err + ", server code=" + res.statusCode);
+    }
+
+    if (res.statusCode === 429) {
       // too many requests!
       return callback(new Error("Can't stage user: we're flooding the server"));
     }
 
-    if (res.code !== 200) {
-      return callback(new Error("Can't stage user: server status " + res.code));
+    if (res.statusCode !== 200) {
+      return callback(new Error("Can't stage user: server status " + res.statusCode));
     }
 
     return callback(null);
@@ -317,26 +322,29 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
   });
 };
 
-var cancelAccount = function cancelAccount(serverEnv, context, callback) {
+var cancelAccount = function cancelAccount(context, callback) {
   // Authenticate with the context and then cancel the account
 
   // Either way, remove the user from the redis db.
-  var email = context.email;
-  if (email) {
+  if (context.email) {
     redis.createClient().multi()
-      .del('ptu:email:'+email)
-      .zrem('ptu:emails:staging', email)
-      .zrem('ptu:emails:valid', email)
+      .del('ptu:email:'+context.email)
+      .zrem('ptu:emails:staging', context.email)
+      .zrem('ptu:emails:valid', context.email)
       .exec();
   }
+  if (Object.keys(vconf).indexOf(context.env) === -1) {
+    // if env is not prod, dev, or stage, then default to prod
+    context.env = 'prod';
+  }
 
-  wsapi.post(vconf[serverEnv], '/wsapi/authenticate_user', context, {
+  wsapi.post(vconf[context.env], '/wsapi/authenticate_user', context, {
     email: context.email,
     pass: context.pass,
     ephemeral: true
   }, function(err, res) {
-    if (err || res.code !== 200) {
-      return callback("ERROR: cancelAccount: authenticateUser: server code " + res.code);
+    if (err || res.statusCode !== 200) {
+      return callback("ERROR: cancelAccount: authenticateUser: server code " + res.statusCode);
     }
 
     // Get the new authentication cookie and save it in our context
@@ -353,16 +361,17 @@ var cancelAccount = function cancelAccount(serverEnv, context, callback) {
     context.cookieJar = cookieJar;
 
     // Now cancel the account
-    wsapi.post(vconf[serverEnv], '/wsapi/account_cancel', context, {
+    wsapi.post(vconf[context.env], '/wsapi/account_cancel', context, {
       email: context.email,
       pass: context.pass
     }, function(err, res) {
       if (err) {
         return callback("ERROR: cancelAccount: " + err);
       }
-      if (res.code !== 200) {
-        return callback("ERROR: cancelAccount: server returned status " + res.code);
+      if (res.statusCode !== 200) {
+        return callback("ERROR: cancelAccount: server returned status " + res.statusCode);
       }
+      console.log("Account canceled: " + context.email);
       return callback(null);
     });
   });

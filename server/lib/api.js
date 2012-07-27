@@ -78,7 +78,6 @@ var API = module.exports = function API(config, onready) {
 
   this._cullOldEmails = function _cullOldEmails(age, callback) {
     var toCull = {};
-    var numCulled = 0;
     var email;
 
     // asynchronously cull the outdated emails in valid and staging
@@ -94,32 +93,30 @@ var API = module.exports = function API(config, onready) {
           toCull[email] = true;
         });
 
+        // Maybe nothing to delete
+        if (!Object.keys(toCull).length) {
+          return (null);
+        }
+
         // we need to get the env for each email so we know how to
         // delete the account
         var multi = redis.createClient().multi();
         Object.keys(toCull).forEach(function(email) {
-          multi.hmget('ptu:email:'+email, 'env', 'context');
+          multi.hmget('ptu:email:'+email, 'email', 'pass', 'env');
         });
         multi.exec(function(err, contexts) {
+          if (err) return callback(err);
           var multi = redis.createClient().multi();
-          Object.keys(toCull).forEach(function(email, index) {
+          contexts.forEach(function(context) {
             // Push the email to be culled and its domain onto the expired queue.
             // The bid module will take it from there and tell the IdP to delete
             // the account.
 
             // The data will actually be delete by bid.cancelAccount
             // Which indicates that these functions belong back in the bid module ...
-            multi.rpush('ptu:expired', JSON.stringify(contexts[index]));
-            numCulled ++;
-            console.log("expired email: " + email);
+            multi.rpush('ptu:expired', JSON.stringify(context));
           });
-          multi.exec(function(err, results) {
-            if (err) {
-              return callback(err);
-            } else {
-              return callback(null);
-            }
-          });
+          multi.exec(callback);
         });
       });
     });
@@ -314,8 +311,7 @@ var API = module.exports = function API(config, onready) {
   this.cancelAccount = function cancelAccount(email, pass, callback) {
     this.getUserData(email, pass, function(err, userData) {
       if (err) return callback(err);
-      var context = JSON.parse(userData.context);
-      bid.cancelAccount(userData.env, context, function(err, results) {
+      bid.cancelAccount(userData, function(err, results) {
         return callback(err, results);
       });
     });
