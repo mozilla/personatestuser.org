@@ -84,7 +84,7 @@ app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, r
   });
 });
 
-app.get('/cancel/email/:email/password/:password', function cancelAccount(req, res) {
+app.get('/cancel/:email/:password', function cancelAccount(req, res) {
   api.cancelAccount(req.param('email'), req.param('password'), function(err, data) {
     if (err) {
       console.log("ERROR: cancelAccount: " + err);

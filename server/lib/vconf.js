@@ -1,11 +1,11 @@
 module.exports = {
   prod: {
-    browserid: 'https://browserid.org',
-    verifier: "https://browserid.org/verify"
+    browserid: 'https://login.persona.org',
+    verifier: "https://login.persona.org/verify"
   },
   stage: {
-    browserid: 'https://diresworb.org',
-    verifier: "https://diresworb.org/verify"
+    browserid: 'https://login.anosrep.org',
+    verifier: "https://login.anosrep.org/verify"
   },
   dev: {
     browserid: 'https://login.dev.anosrep.org',

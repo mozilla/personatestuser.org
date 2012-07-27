@@ -64,7 +64,6 @@ var Verifier = function Verifier() {
     redis.createClient().blpop('ptu:expired', 0, function(err, data) {
       // data is a tuple like [qname, data]
       // where data contains a context of an expired account
-      console.log("blpopped from ptu:expired: " + data);
       try {
         data = JSON.parse(data[1]);
         var email = data[0];
@@ -372,6 +371,7 @@ var cancelAccount = function cancelAccount(context, callback) {
       if (res.statusCode !== 200) {
         return callback("ERROR: cancelAccount: server returned status " + res.statusCode);
       }
+      console.log("Account canceled: " + context.email);
       return callback(null);
     });
   });
