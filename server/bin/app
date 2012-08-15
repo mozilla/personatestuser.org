@@ -110,7 +110,7 @@ function check_malformed_audience(audience, res) {
   if (! /^https?:\/\//.test(audience)) {
     res.setHeader('Content-Type', 'text/plain');
     res.writeHead(400);
-    res.end("Audience '" + audience + "' must begin with protocol and be url encoded (e.g., https%3A%2F%2F" + audience + ")");
+    res.end("Audience '" + audience + "' must begin with protocol and be url encoded.\nFor example:\n\thttps%3A%2F%2F" + audience + "\n\n");
     return true;
   }
   return false;
