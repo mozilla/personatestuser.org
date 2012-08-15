@@ -335,7 +335,7 @@ var API = module.exports = function API(config, onready) {
     }
 
     // Set the expiration date in unix time, not JavaScript time
-    var expiresAt = unixTime() + duration;
+    var expiresAt = unixTime() * 1000 + duration;
 
     self._generateKeypair(userData, function(err, kp) {
       bid.authenticateUser(serverEnv, email, pass, function(err) {
