@@ -7,7 +7,7 @@ const jwcrypto = require('jwcrypto'),
       bid = require('./bid'),
       unixTime = require('./time').unixTime,
       redis = require('redis'),
-      redisConf = require('./config'),
+      logEvent = require('./events').logEvent,
       vconf = require('./vconf'),
       ALGORITHM = "RS",
       KEYSIZE = 256,
@@ -71,6 +71,7 @@ var API = module.exports = function API(config, onready) {
   //                      token     verifier token (JSON string)
   //                      env       server env (prod, dev, stage)
   //                      do_verify flag
+  // ptu:events:<email> = zset of events pertaining to an email address
   //
   // Emails start their life in staging and, if all goes well, end
   // up in ptu:emails once validated etc.  We cull both zsets
@@ -173,6 +174,7 @@ var API = module.exports = function API(config, onready) {
 
     redis.createClient().incr('ptu:nextval', function(err, val) {
       email = name + val + '@' + DEFAULT_DOMAIN;
+      logEvent("Generate new email account", email);
       var expires = unixTime() + ONE_HOUR_IN_SECONDS;
       var data = {
         email: email,
@@ -191,6 +193,7 @@ var API = module.exports = function API(config, onready) {
   };
 
   this._waitForEmail = function _waitForEmail(email, callback) {
+    logEvent("Awaiting return email", email);
     self.emit('message', "Awaiting " + email + " ...");
     expectSoon(
       function() {
@@ -202,6 +205,7 @@ var API = module.exports = function API(config, onready) {
             self.emit('message', "Received " + email);
             redis.createClient().hgetall('ptu:email:'+email, callback);
           } else {
+            logEvent("Timed out awaiting return email", email);
             self.emit('error', "Timed out waiting for " + email);
             callback("Timed out waiting for " + email);
           }
@@ -231,10 +235,12 @@ var API = module.exports = function API(config, onready) {
    * redis along with the rest of the email's data.
    */
   this._generateKeypair = function genKeyPair(params, callback) {
+    logEvent("Generate keypair", params.email);
     if (!params.email) {
       return callback("params missing required email");
     }
     jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
+      logEvent("Keypair generated", params.email);
       redis.createClient().hmset('ptu:email:'+params.email, {
         publicKey: kp.publicKey.serialize(),
         secretKey: kp.secretKey.serialize()
@@ -318,6 +324,8 @@ var API = module.exports = function API(config, onready) {
   };
 
   this.getAssertion = function getAssertion(userData, audience, callback) {
+    logEvent("Get assertion", userData.email);
+
     var email = userData.email;
     var pass = userData.pass;
     var duration = userData.duration || (60 * 60 * 1000);
@@ -327,19 +335,25 @@ var API = module.exports = function API(config, onready) {
     }
 
     // Set the expiration date in unix time, not JavaScript time
-    var expiresAt = unixTime() + duration;
+    var expiresAt = unixTime() * 1000 + duration;
 
     self._generateKeypair(userData, function(err, kp) {
       bid.authenticateUser(serverEnv, email, pass, function(err) {
         bid.certifyKey(serverEnv, email, kp.publicKey, function(err, res) {
           var cert = res.body;
+          logEvent("Sign assertion", userData.email);
           jwcrypto.assertion.sign(
             {},
             {audience: audience, expiresAt: expiresAt},
             kp.secretKey,
             function(err, assertion) {
-              if (err) return self.callback(err);
+              if (err) {
+                logEvent(err.toString(), userData.email);
+                return self.callback(err);
+              }
+              logEvent("Assertion signed", userData.email);
               var bundle = jwcrypto.cert.bundle([cert], assertion);
+              logEvent("Certificate bundled", userData.email);
               return callback(null, {
                  email: userData.email,
                  pass: userData.pass,
