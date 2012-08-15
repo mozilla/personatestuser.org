@@ -11,6 +11,7 @@ const express = require('express'),
       path = require('path'),
       socket_io = require('socket.io'),
       vconf = require('../lib/vconf'),
+      fetchEvents = require('../lib/events').fetchEvents,
       API = require('../lib/api');
 
 var api = new API();
@@ -61,6 +62,7 @@ app.get('/', function(req, res) {
 });
 
 app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
+  var start = Date.now();
   api.getVerifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err) {
       console.log("ERROR: getVerifiedEmail: " + err);
@@ -68,11 +70,16 @@ app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
       return res.end();
     }
     res.contentType('json');
-    return res.end(JSON.stringify(data));
+    fetchEvents(data.email, start, function(err, stream) {
+      data['events'] = stream;
+      return res.end(JSON.stringify(data));
+    });
   });
 });
 
 app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
+  var start = Date.now();
+
   api.getUnverifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err) {
       console.log("ERROR: getUnverifiedEmail: " + err);
@@ -80,7 +87,10 @@ app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, r
       return res.end();
     }
     res.contentType('json');
-    return res.end(JSON.stringify(data));
+    fetchEvents(data.email, start, function(err, stream) {
+      data['events'] = stream;
+      return res.end(JSON.stringify(data));
+    });
   });
 });
 
@@ -96,8 +106,20 @@ app.get('/cancel/:email/:password', function cancelAccount(req, res) {
   });
 });
 
-function _getAssertion(email, password, audience, req, res) {
+function check_malformed_audience(audience, res) {
+  if (! /^https?:\/\//.test(audience)) {
+    res.setHeader('Content-Type', 'text/plain');
+    res.writeHead(400);
+    res.end("Audience '" + audience + "' must begin with protocol and be url encoded.\nFor example:\n\thttps%3A%2F%2F" + audience + "\n\n");
+    return true;
+  }
+  return false;
+}
+
+function _getAssertion(email, password, audience, req, res, start) {
+  start = start || Date.now();
   // utility function for assertion getters below
+
   api.getUserData(email, password, function(err, userData) {
     if (err) {
       console.log("ERROR: getUserData: " + err);
@@ -111,23 +133,31 @@ function _getAssertion(email, password, audience, req, res) {
         return res.end();
       }
       res.contentType('json');
-      return res.end(JSON.stringify(results));
+      fetchEvents(email, start, function(err, stream) {
+        results['events'] = stream;
+        return res.end(JSON.stringify(results));
+      });
     });
   });
 };
 
 app.get('/assertion/:audience/:email/:password', function getAssertion(req, res) {
+  if (check_malformed_audience(req.param('audience'), res)) { return null; }
+
   return _getAssertion(req.param('email'), req.param('password'), req.param('audience'), req, res);
 });
 
 app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
+  if (check_malformed_audience(req.param('audience'), res)) { return null; }
+
+  var start = Date.now();
   api.getVerifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err || !data) {
       console.log("ERROR: getVerifiedEmail: " + err);
       res.writeHead(500);
       return res.end();
     }
-    return _getAssertion(data.email, data.pass, req.param('audience'), req, res);
+    return _getAssertion(data.email, data.pass, req.param('audience'), req, res, start);
   });
 });
 

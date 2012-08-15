@@ -7,7 +7,9 @@ const util = require('util'),
       redis = require('redis'),
       redisConf = require('./config'),
       vconf = require('./vconf'),
-      wsapi = require('./wsapi_client');
+      wsapi = require('./wsapi_client'),
+      logEvent = require('./events').logEvent,
+      db = redis.createClient();
 
 /**
  * The Verifier sits and waits for asynchronous verification emails
@@ -39,11 +41,14 @@ var Verifier = function Verifier() {
 
   this.completeUserCreation = function completeUserCreation(userData, callback) {
     var err = null;
+    logEvent('POST /wsapi/complete_user_creation', userData.email);
     wsapi.post(vconf[userData.env], '/wsapi/complete_user_creation', {}, {
       token: userData.token,
       pass: userData.pass
     }, function(err, res) {
+      logEvent("complete_user_creation returned " + res.statusCode, userData.email);
       if (err) {
+        logEvent(err.toString(), userData.email);
         return callback("Can't complete user creation: " + err);
       }
 
@@ -73,7 +78,7 @@ var Verifier = function Verifier() {
         });
       } catch (err) {
         // XXX should flush from redis anyway?
-        console.log("ERROR: _startCancelingExpiredEmails: " + err);
+        // console.log("ERROR: _startCancelingExpiredEmails: " + err);
       }
 
       // Don't flood the server with account deletions.  No more than
@@ -143,16 +148,18 @@ util.inherits(Verifier, events.EventEmitter);
 var getSessionContext = function getSessionContext(config, context, callback) {
   // Get a session_context
   // Modify @context in place with results
+  logEvent('GET /wsapi/session_context', context.email);
 
   wsapi.get(config, '/wsapi/session_context', context, {
   }, function(err, res) {
+    logEvent("session_context returned " + res.statusCode, context.email);
+
     if (err) {
-      console.log("ERROR: getSessionContext: " + err);
+      logEvent(err.toString(), context.email);
       return callback(err);
     }
 
     if (res.statusCode !== 200) {
-      console.log("ERROR: getSessionContext: server status: " + res.statusCode);
       return callback(new Error("Can't get session context: server status " + res.statusCode));
     }
 
@@ -183,12 +190,15 @@ var getSessionContext = function getSessionContext(config, context, callback) {
 var _getAddressInfo = function _getAddressInfo(config, context, callback) {
   // I don't know if we care about the address info ...
   // Modify @context in place
+  logEvent('GET /wspai/address_info', context.email);
 
   wsapi.get(config, '/wsapi/address_info', context, {
     email: context.email
   }, function(err, res) {
+    logEvent("address_info returned " + res.statusCode, context.email);
+
     if (err) {
-      console.log("ERROR: _getAddressInfo: " + err);
+      logEvent(err.toString(), context.email);
       return callback(err);
     }
     if (res.statusCode !== 200) {
@@ -204,18 +214,22 @@ var _getAddressInfo = function _getAddressInfo(config, context, callback) {
 var authenticateUser = function authenticateUser(config, email, pass, callback) {
   redis.createClient().hget('ptu:email:'+email, 'context', function(err, data) {
     var context = JSON.parse(data);
-    console.log("bid.authenticate user " + context.email);
+
+    logEvent('POST /wsapi/authenticate_user', email);
+
     wsapi.post(config, '/wsapi/authenticate_user', context, {
       email: email,
       pass: pass,
       ephemeral: true
     }, function(err, res) {
+      logEvent("authenticate_user returned " + res.statusCode, email);
       if (res.statusCode !== 200) {
         return callback("ERROR: authenticateUser: server returned " + res.statusCode);
       }
 
       var body = JSON.parse(res.body);
       if (body.success !== true) {
+        logEvent("Authentication failed", email);
         return callback("Authentication failed");
       } else {
         // Save our updated tokens
@@ -236,14 +250,19 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
 };
 
 var stageUser = function stageUser(config, context, callback) {
-  console.log("bid.stageUser " + context.email);
+  logEvent("POST /wsapi/stage_user", context.email);
+
   wsapi.post(config, '/wsapi/stage_user', context, {
     csrf: context.session.csrf_token,
     email: context.email,
     pass: context.pass,
     site: context.site
   }, function(err, res) {
-    if (err) return callback(err);
+    logEvent("stage_user returned " + res.statusCode, context.email);
+    if (err) {
+      logEvent("ERROR: " + err, context.email);
+      return callback(err);
+    };
 
     if (!res) {
       return callback("ERROR: stageUser: wsapi.post did not return a response");
@@ -267,13 +286,14 @@ var stageUser = function stageUser(config, context, callback) {
 };
 
 var createUser = function createUser(config, email, pass, callback) {
-  console.log("bid.createUser email: " + email);
   var context = {
     email: email,
     pass: pass,
     site: process.env.PUBLIC_URL || 'http://personatestuser.org',
     keys: {}
   };
+
+  logEvent("Create user", context.email);
 
   getSessionContext(config, context, function(err) {
     if (err) return callback(err);
@@ -301,20 +321,28 @@ var createUser = function createUser(config, email, pass, callback) {
 };
 
 var certifyKey = function certifyKey(config, email, pubkey, callback) {
+  var context = {};
+
+  logEvent("Certify key", email.email);
+
   redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
     if (err) return callback(err);
     try {
-      var context = JSON.parse(data.context);
+      context = JSON.parse(data.context);
     } catch (x) {
       return callback("Bad context field for " + email + ": " +err);
     }
+
+    logEvent("POST /wsapi/cert_key", context.email);
+
     wsapi.post(config, '/wsapi/cert_key', context, {
       email: email,
       pubkey: pubkey.serialize(),
       ephemeral: false
     }, function(err, res) {
+      logEvent("cert_key returned " + res.statusCode, context.email);
       if (err) {
-        console.log("ERROR: certifyKey: " + err);
+        logEvent(err.toString(), context.email);
         return callback(err);
       }
       return callback(null, res);
@@ -329,6 +357,7 @@ var cancelAccount = function cancelAccount(context, callback) {
   if (context.email) {
     redis.createClient().multi()
       .del('ptu:email:'+context.email)
+      .del('ptu:events:'+context.email)
       .zrem('ptu:emails:staging', context.email)
       .zrem('ptu:emails:valid', context.email)
       .exec();
