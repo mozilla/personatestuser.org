@@ -106,9 +106,20 @@ app.get('/cancel/:email/:password', function cancelAccount(req, res) {
   });
 });
 
+function check_malformed_audience(audience, res) {
+  if (! /^https?:\/\//.test(audience)) {
+    res.setHeader('Content-Type', 'text/plain');
+    res.writeHead(400);
+    res.end("Audience '" + audience + "' must begin with protocol and be url encoded (e.g., https%3A%2F%2F" + audience + ")");
+    return true;
+  }
+  return false;
+}
+
 function _getAssertion(email, password, audience, req, res, start) {
   start = start || Date.now();
   // utility function for assertion getters below
+
   api.getUserData(email, password, function(err, userData) {
     if (err) {
       console.log("ERROR: getUserData: " + err);
@@ -131,10 +142,14 @@ function _getAssertion(email, password, audience, req, res, start) {
 };
 
 app.get('/assertion/:audience/:email/:password', function getAssertion(req, res) {
+  if (check_malformed_audience(req.param('audience'), res)) { return null; }
+
   return _getAssertion(req.param('email'), req.param('password'), req.param('audience'), req, res);
 });
 
 app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
+  if (check_malformed_audience(req.param('audience'), res)) { return null; }
+
   var start = Date.now();
   api.getVerifiedEmail(req.param('env', 'prod'), function(err, data) {
     if (err || !data) {
