@@ -34,14 +34,15 @@
 
 div
   #status
-    .message Generate your very own Persona test user.  &lt;gleam!/&gt;
+    .message Hello!
 
 
 div
 
-  div This is a service for creating temporary test user accounts and assertions for 
+  div This is a service for creating temporary user accounts and assertions for 
+    | testing your 
     a(href='https://persona.org') Persona
-    | .
+    | -powered login flows.
 
   h3 HTTP API
 
@@ -51,6 +52,7 @@ div
       code GET /email
         span.option /:env
       p Get a new, verified email and password.  
+        | You will be able to use this account right away. 
         a(class='function', href='/email', id='submit-email-verified') Try it!
 
       div
@@ -61,7 +63,8 @@ div
     dd
       code GET /unverified_email
         span.option /:env
-      p Get an email, password, and verification token.  
+      p Get an email, password, and verification token. 
+        | You will need to complete the verification process for this account. 
         a(class='function', href='/unverified_email', id='submit-email-unverified') Try it!
 
         .info
