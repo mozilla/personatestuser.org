@@ -68,8 +68,14 @@ transparent.)
 
 ### New Assertion
 
-Like the above, but with explicit parameters for an existing email and
-password.  Does not create a new account.
+Like the above, but with explicit parameters for email and password.
+
+If the email is current, the password must be correct.
+
+If the email is not current, a new, verified email will be created
+with the new password.  Not only is this a handy shortcut for account
+creation, but it also lets you automatically resuscitate accounts that
+have expired and been canceled.
 
     GET /assertion/<audience>/<email>/<password>
 
