@@ -166,7 +166,108 @@ var API = module.exports = function API(config, onready) {
   // being handled (despite the above 'on error' handler)
   onready(null);
 
-  this._generateNewEmail = function _generateNewEmail(serverEnv, callback) {
+  this._stageEmail = function _stageEmail(params, callback) {
+    if (! (params.email && params.pass && params.env && params.expires)) {
+      return callback("Missing required params for stageEmail");
+    }
+    var multi = redis.createClient().multi();
+    multi.zadd('ptu:emails:staging', params.expires, params.email);
+    multi.hmset('ptu:email:'+params.email, params);
+    multi.exec(function(err) {
+      if (err) return callback(err);
+      return callback(null, params);
+    });
+  };
+
+  /**
+   * Create or re-use an existing email with the given params.
+   *
+   * @param params
+   *        (dict)      Must contain the fields:
+   *                    name     username for email
+   *                    pass     password
+   *                    env      browserid server env to use
+   *
+   * @param callback
+   *        (function)  Callback to invoke when finished
+   *
+   * If the account does not exist, create it and set the password;
+   * stage it, and callback with account details.
+   *
+   * If the email account already exists, and params contains the
+   * correct password, bump the expiration date and callback with
+   * account details.
+   *
+   * If the account exists and the caller does not know the correct
+   * password, callback with error.
+   *
+   */
+  this._createNewEmail = function _createNewEmail(params, callback) {
+    var email = (params.email || "").trim();
+    var pass = (params.pass || "").trim();
+    var env = params.env;
+
+    if (! (email && pass && env)) {
+      return callback("Missing required params for _createNewEmail");
+    }
+
+    // sanity check that this email is ok for our domain
+    var validEmailRE = new RegExp('^[\\w\\d_-]+@' + DEFAULT_DOMAIN + '$');
+    if (! validEmailRE.test(email)) {
+      return callback("Email address invalid for " + DEFAULT_DOMAIN);
+    }
+
+    // Check whether this email exists already
+    redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
+      if (err) {
+        return callback(err);
+      }
+
+      // If the email does exist, and the caller knows the right password,
+      // bump the expiration time and return the valid account data.
+      else if (data && data.pass === pass) {
+        logEvent("Re-use existing email account", email);
+        var expires = unixTime() + ONE_HOUR_IN_SECONDS;
+        redis.createClient().hset('ptu:email:'+email, 'expires', expires, function(err) {
+          if (err) {
+            return callback(err);
+          }
+          data.expires = expires;
+          return callback(null, data);
+        });
+      }
+
+      // Email exists, but caller doesn't know password.  Error.
+      else if (data && data.pass !== pass) {
+        return callback("Password incorrect");
+      }
+
+      // Email does not exist.  Create it.
+      else {
+        logEvent("Create new email account", email);
+        var params = {
+          email: email,
+          pass: pass,
+          expires: unixTime() + ONE_HOUR_IN_SECONDS,
+          env: env
+        };
+        return self._stageEmail(params, callback);
+      }
+    });
+  };
+
+  /**
+   * Create and stage a new email account.
+   *
+   * @param params
+   *        (dict)      Required field:
+   *                    env     The browserid server env to use
+   *
+   * @param callback
+   *        (function)  Callback to invoke when finished
+   *
+   */
+  this._generateNewEmail = function _generateNewEmail(params, callback) {
     var name = getRandomName();
     var pass = getRandomPassword();
     // we will assign the exact email below
@@ -175,23 +276,27 @@ var API = module.exports = function API(config, onready) {
     redis.createClient().incr('ptu:nextval', function(err, val) {
       email = name + val + '@' + DEFAULT_DOMAIN;
       logEvent("Generate new email account", email);
-      var expires = unixTime() + ONE_HOUR_IN_SECONDS;
       var data = {
         email: email,
         pass: pass,
-        expires: expires,
-        env: serverEnv
+        expires: unixTime() + ONE_HOUR_IN_SECONDS,
+        env: params.env
       };
-      var multi = redis.createClient().multi();
-      multi.zadd('ptu:emails:staging', expires, email);
-      multi.hmset('ptu:email:'+email, data);
-      multi.exec(function(err) {
-        if (err) return callback(err);
-        return callback(null, data);
-      });
+      self._stageEmail(data, callback);
     });
   };
 
+  /**
+   * Wait for an email to be verified
+   *
+   * @param email
+   *        (string)    The email address to expect
+   *
+   * @param callback
+   *        (function)  Function to invoke on completion
+   *
+   * Poll for receipt of email.  Timeout after 5 secs.
+   */
   this._waitForEmail = function _waitForEmail(email, callback) {
     logEvent("Awaiting return email", email);
     self.emit('message', "Awaiting " + email + " ...");
@@ -202,6 +307,7 @@ var API = module.exports = function API(config, onready) {
         5000, // milliseconds,
         function(it_worked) {
           if (it_worked) {
+            logEvent("Received return email", email);
             self.emit('message', "Received " + email);
             redis.createClient().hgetall('ptu:email:'+email, callback);
           } else {
@@ -213,12 +319,19 @@ var API = module.exports = function API(config, onready) {
     );
   };
 
-  this._getEmail = function _getEmail(serverEnv, do_verify, callback) {
-    self._generateNewEmail(serverEnv, function(err, data) {
+  this._getEmail = function _getEmail(params, do_verify, callback) {
+    var getEmailFunc;
+    if (params.email && params.pass) {
+      getEmailFunc = self._createNewEmail;
+    } else {
+      getEmailFunc = self._generateNewEmail;
+    }
+
+    getEmailFunc(params, function(err, data) {
       if (err) return callback(err);
       redis.createClient().hset('ptu:email:'+data.email, 'do_verify', do_verify, function(err) {
         if (err) return callback(err);
-        bid.createUser(vconf[serverEnv], data.email, data.pass, function(err) {
+        bid.createUser(vconf[params.env], data.email, data.pass, function(err) {
           if (err) {
             return callback(err);
           } else {
@@ -255,8 +368,8 @@ var API = module.exports = function API(config, onready) {
    * with our IdP.  Don't complete the user creation; return the
    * creation url.
    */
-  this.getUnverifiedEmail = function getUnverifiedEmail(serverEnv, callback) {
-    this._getEmail(serverEnv, 'no', function(err, email) {
+  this.getUnverifiedEmail = function getUnverifiedEmail(params, callback) {
+    self._getEmail(params, 'no', function(err, email) {
       if (err) return callback(err);
       self._waitForEmail(email, function(err, emailData) {
         if (err) {
@@ -282,8 +395,8 @@ var API = module.exports = function API(config, onready) {
    * verification takes longer than 5 seconds, consider that it's
    * timed out and call back with an error.
    */
-  this.getVerifiedEmail = function getVerifiedEmail(serverEnv, callback) {
-    this._getEmail(serverEnv, 'yes', function(err, email) {
+  this.getVerifiedEmail = function getVerifiedEmail(params, callback) {
+    self._getEmail(params, 'yes', function(err, email) {
       if (err) return callback(err);
       self._waitForEmail(email, function(err, emailData) {
         if (err) {
@@ -307,9 +420,18 @@ var API = module.exports = function API(config, onready) {
   this.getUserData = function getEmailData(email, pass, callback) {
     // get the email data if the caller knows the right password
     redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
-      if (!data || data.pass !== pass) {
+      if (err) {
+        return callback(err);
+      }
+
+      if (!data) {
+        return callback(null, null);
+      }
+
+      if (data.pass !== pass) {
         return callback("Username and password do not match");
       }
+
       return callback(err, data);
     });
   };

@@ -60,15 +60,29 @@ token to complete the account creation.
 Get a new verified email and an assertion, valid for two minutes, for
 the named audience.
 
+Audience must include the protocol (`https://`) and be url-encoded.
+For example, rather than `jedp.gov`, the audience would be
+`https%3A%2F%2fjedp.gov`.  (Though this is a bit cumbersome, we prefer
+that the input you're sending to the BrowserID verifier be completely
+transparent.)
+
 ### New Assertion
 
-Like the above, but with explicit parameters for an existing email and
-password.  Does not create a new account.
+Like the above, but with explicit parameters for email and password.
+
+If the email is current, the password must be correct.
+
+If the email is not current, a new, verified email will be created
+with the new password.  Not only is this a handy shortcut for account
+creation, but it also lets you automatically resuscitate accounts that
+have expired and been canceled.
 
     GET /assertion/<audience>/<email>/<password>
 
 Note that *env* is not an option, since the email has already been
 created for a certain server environment.
+
+Again, the audience must include the protocol and be url-encoded.
 
 ### Cancel Account
 
