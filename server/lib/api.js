@@ -380,6 +380,7 @@ var API = module.exports = function API(config, onready) {
             pass: emailData.pass,
             token: emailData.token,
             expires: emailData.expires,
+            context: emailData.context,
             env: emailData.env,
             browserid: vconf[emailData.env].browserid,
             verifier: vconf[emailData.env].verifier
@@ -408,6 +409,7 @@ var API = module.exports = function API(config, onready) {
             email: emailData.email,
             pass: emailData.pass,
             expires: emailData.expires,
+            context: emailData.context,
             env: emailData.env,
             browserid: vconf[emailData.env].browserid,
             verifier: vconf[emailData.env].verifier
@@ -480,6 +482,7 @@ var API = module.exports = function API(config, onready) {
                  email: userData.email,
                  pass: userData.pass,
                  expires: userData.expires,
+                 context: userData.context,
                  env: userData.env,
                  browserid: serverEnv.browserid,
                  verifier: serverEnv.verifier,
