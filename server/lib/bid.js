@@ -126,12 +126,12 @@ var Verifier = function Verifier() {
             if (err) {
               self.emit('error', err);
             } else {
-              self.emit('user-ready', email, null);
+              self.emit('user-ready', email, userData);
             }
             self._startVerifyingEmails();
           });
         } else {
-          self.emit('user-ready', email, token);
+          self.emit('user-ready', email, userData);
           self._startVerifyingEmails();
         }
       });
