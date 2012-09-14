@@ -20,7 +20,7 @@ var logEvent = module.exports.logEvent = function logEvent(text, email, date) {
   // if there's an email associated, add to the event stream
   if (email) {
     date = date || Date.now();
-    db.zadd('ptu:events:'+email, Date.now(), text);
+    db.zadd('ptu:events:'+email, date, text);
   }
 };
 
