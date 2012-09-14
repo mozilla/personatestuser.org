@@ -164,7 +164,7 @@ var API = module.exports = function API(config, onready) {
     var callback = self.emailCallbacks[email];
     if (typeof callback === 'function') {
       var msg = "Received return email " + email;
-      logEvent(msg);
+      logEvent(msg, email);
       self.emit('message', "Received " + email);
 
       // Call back with the user data, which at this point should
@@ -321,7 +321,7 @@ var API = module.exports = function API(config, onready) {
       var still_there = self.emailCallbacks[email];
       if (typeof still_there === 'function') {
         var err = "Timed out awaiting return of email " + email;
-        logEvent(err);
+        logEvent(err, email);
         self.emit('error', err);
         callback(err);
         delete(self.emailCallbacks[email]);
@@ -365,7 +365,6 @@ var API = module.exports = function API(config, onready) {
       return callback("params missing required email");
     }
     jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
-      logEvent("Keypair generated", params.email);
       redis.createClient().hmset('ptu:email:'+params.email, {
         publicKey: kp.publicKey.serialize(),
         secretKey: kp.secretKey.serialize()
@@ -477,7 +476,6 @@ var API = module.exports = function API(config, onready) {
       bid.authenticateUser(serverEnv, email, pass, function(err) {
         bid.certifyKey(serverEnv, email, kp.publicKey, function(err, res) {
           var cert = res.body;
-          logEvent("Sign assertion", userData.email);
           jwcrypto.assertion.sign(
             {},
             {audience: audience, expiresAt: expiresAt},
@@ -487,9 +485,7 @@ var API = module.exports = function API(config, onready) {
                 logEvent(err.toString(), userData.email);
                 return self.callback(err);
               }
-              logEvent("Assertion signed", userData.email);
               var bundle = jwcrypto.cert.bundle([cert], assertion);
-              logEvent("Certificate bundled", userData.email);
               return callback(null, {
                  email: userData.email,
                  pass: userData.pass,
