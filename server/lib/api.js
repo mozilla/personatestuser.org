@@ -27,29 +27,6 @@ const DEFAULT_DOMAIN =
 
 console.log('my domain is:', DEFAULT_DOMAIN);
 
-function expectSoon(f, interval_ms, callback) {
-  function isTrueWithinTime(elapsed_ms) {
-
-    var found = false;
-    if (f()) {
-      found = true;
-      return callback(true);
-    }
-
-    else if (elapsed_ms < interval_ms) {
-      elapsed_ms *= 2;
-      setTimeout(function() {
-        isTrueWithinTime(elapsed_ms);
-      }, elapsed_ms);
-    }
-
-    else {
-      return callback(!! found);
-    }
-  }
-  isTrueWithinTime(50);
-};
-
 var API = module.exports = function API(config, onready) {
   events.EventEmitter.call(this);
   this._alreadyCulling = false;
