@@ -40,7 +40,7 @@ var server = smtp.createServer('restmail.net', function (req) {
       var address = mail.to[0].address;
       var match = mail.text.match(/https:\/\/\S+?verify_email_address\?token=(\S+)/);
       if (match) {
-        logEvent("Received email with verification url", address);
+        logEvent("email with verification url received", address);
         db.rpush('ptu:mailq', JSON.stringify({
           email: address,
           token: match[1]

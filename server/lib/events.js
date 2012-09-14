@@ -13,13 +13,14 @@ const redis = require('redis'),
  *        (string)    Optional.  If provided, record the given text in the
  *                    email's event stream with millisecond timestamp.
  */
-var logEvent = module.exports.logEvent = function logEvent(text, email) {
+var logEvent = module.exports.logEvent = function logEvent(text, email, date) {
   // print it
   console.log(text);
 
   // if there's an email associated, add to the event stream
   if (email) {
-    db.zadd('ptu:events:'+email, Date.now(), text);
+    date = date || Date.now();
+    db.zadd('ptu:events:'+email, date, text);
   }
 };
 
