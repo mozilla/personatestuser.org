@@ -46,7 +46,7 @@ var Verifier = function Verifier() {
       token: userData.token,
       pass: userData.pass
     }, function(err, res) {
-      logEvent("complete_user_creation returned " + res.statusCode, userData.email);
+      logEvent("/wsapi/complete_user_creation returned " + res.statusCode, userData.email);
       if (err) {
         logEvent(err.toString(), userData.email);
         return callback("Can't complete user creation: " + err);
@@ -152,7 +152,7 @@ var getSessionContext = function getSessionContext(config, context, callback) {
 
   wsapi.get(config, '/wsapi/session_context', context, {
   }, function(err, res) {
-    logEvent("session_context returned " + res.statusCode, context.email);
+    logEvent("/wsapi/session_context returned " + res.statusCode, context.email);
 
     if (err) {
       logEvent(err.toString(), context.email);
@@ -195,7 +195,7 @@ var _getAddressInfo = function _getAddressInfo(config, context, callback) {
   wsapi.get(config, '/wsapi/address_info', context, {
     email: context.email
   }, function(err, res) {
-    logEvent("address_info returned " + res.statusCode, context.email);
+    logEvent("/wsapi/address_info returned " + res.statusCode, context.email);
 
     if (err) {
       logEvent(err.toString(), context.email);
@@ -222,7 +222,7 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
       pass: pass,
       ephemeral: true
     }, function(err, res) {
-      logEvent("authenticate_user returned " + res.statusCode, email);
+      logEvent("/wsapi/authenticate_user returned " + res.statusCode, email);
       if (res.statusCode !== 200) {
         return callback("ERROR: authenticateUser: server returned " + res.statusCode);
       }
@@ -258,7 +258,7 @@ var stageUser = function stageUser(config, context, callback) {
     pass: context.pass,
     site: context.site
   }, function(err, res) {
-    logEvent("stage_user returned " + res.statusCode, context.email);
+    logEvent("/wsapi/stage_user returned " + res.statusCode, context.email);
     if (err) {
       logEvent("ERROR: " + err, context.email);
       return callback(err);
@@ -340,7 +340,7 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
       pubkey: pubkey.serialize(),
       ephemeral: false
     }, function(err, res) {
-      logEvent("cert_key returned " + res.statusCode, context.email);
+      logEvent("/wsapi/cert_key returned " + res.statusCode, context.email);
       if (err) {
         logEvent(err.toString(), context.email);
         return callback(err);

@@ -11,6 +11,7 @@ const express = require('express'),
       path = require('path'),
       socket_io = require('socket.io'),
       vconf = require('../lib/vconf'),
+      logEvent = require("../lib/events").logEvent,
       fetchEvents = require('../lib/events').fetchEvents,
       API = require('../lib/api');
 
@@ -62,14 +63,20 @@ app.get('/', function(req, res) {
 });
 
 app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
+  var env = req.param('env', 'prod');
   var start = Date.now();
-  api.getVerifiedEmail({env:req.param('env', 'prod')}, function(err, data) {
+  // save start event for logging once we have an email to log it to
+  var startEvent = "START " + start + ": GET /email/" + env;
+
+  api.getVerifiedEmail({env:env}, function(err, data) {
     if (err) {
       console.log("ERROR: getVerifiedEmail: " + err);
       res.writeHead(500);
       return res.end();
     }
     res.contentType('json');
+    logEvent(startEvent, data.email);
+    logEvent("Done", data.email);
     fetchEvents(data.email, start, function(err, stream) {
       data['events'] = stream;
       return res.end(JSON.stringify(data));
@@ -78,15 +85,19 @@ app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
 });
 
 app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
+  var env = req.param('env', 'prod');
   var start = Date.now();
+  var startEvent = "GET /unverified_email/" + env;
 
-  api.getUnverifiedEmail({env:req.param('env', 'prod')}, function(err, data) {
+  api.getUnverifiedEmail({env:env}, function(err, data) {
     if (err) {
       console.log("ERROR: getUnverifiedEmail: " + err);
       res.writeHead(500);
       return res.end();
     }
     res.contentType('json');
+    logEvent(startEvent, data.email);
+    logEvent("Done", data.email);
     fetchEvents(data.email, start, function(err, stream) {
       data['events'] = stream;
       return res.end(JSON.stringify(data));
@@ -140,6 +151,7 @@ function _getAssertion(email, password, audience, req, res, start) {
         return res.end();
       }
       res.contentType('json');
+      logEvent("Done", email);
       fetchEvents(email, start, function(err, stream) {
         results['events'] = stream;
         return res.end(JSON.stringify(results));
@@ -156,9 +168,14 @@ function _getAssertion(email, password, audience, req, res, start) {
 app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req, res) {
   if (check_malformed_audience(req.param('audience'), res)) { return null; }
 
+  var audience = req.param('audience');
   var email = req.param('email');
   var pass = req.param('password');
-  var audience = req.param('audience');
+  var env = req.param('env', 'prod');
+
+  var start = Date.now();
+  logEvent("GET /assertion/<aud>/<email>/<password>", email);
+
   // check if account exists
   api.getUserData(email, pass, function(err, data) {
     // Invalid password or other error
@@ -178,7 +195,7 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
       email: email,
       pass: pass,
       audience: audience,
-      env: req.param('env', 'prod')
+      env: env
     };
     api.getVerifiedEmail(params, function(err, userData) {
       if (userData && !err) {
@@ -194,13 +211,17 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
 app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
   if (check_malformed_audience(req.param('audience'), res)) { return null; }
 
+  var env = req.param('env', 'prod');
   var start = Date.now();
-  api.getVerifiedEmail({env:req.param('env', 'prod')}, function(err, data) {
+  var startEvent = "START " + start + "GET /email_with_assertion/<aud>/" + env;
+
+  api.getVerifiedEmail({env:env}, function(err, data) {
     if (err || !data) {
       console.log("ERROR: getVerifiedEmail: " + err);
       res.writeHead(500);
       return res.end();
     }
+    logEvent(startEvent, data.email);
     return _getAssertion(data.email, data.pass, req.param('audience'), req, res, start);
   });
 });
