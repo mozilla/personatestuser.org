@@ -153,12 +153,25 @@ var API = module.exports = function API(config, onready) {
   // getVerifiedEmail (below) will timeout and return an error if the email
   // creation has not completed within five seconds.
   this.verifier = new bid.Verifier(vconf);
-  this.availableEmails = {};
+  this.emailCallbacks = {};
   this.verifier.on('error', function(err) {
     console.log("Verifier ERROR: " + err);
   });
-  this.verifier.on('user-ready', function(email, token) {
-    self.availableEmails[email] = token || true;
+
+  // When an email is ready, fire the callback that's waiting for it, and
+  // remove the callback.
+  this.verifier.on('user-ready', function(email, data) {
+    var callback = self.emailCallbacks[email];
+    if (typeof callback === 'function') {
+      var msg = "Received return email " + email;
+      logEvent(msg);
+      self.emit('message', "Received " + email);
+
+      // Call back with the user data, which at this point should
+      // be exactly what's stored in ptu:email:<email>
+      callback(null, data);
+      delete self.emailCallbacks[email];
+    }
   });
 
   // XXX i would like to have a select(db, onready), but i'm getting
@@ -287,7 +300,7 @@ var API = module.exports = function API(config, onready) {
   };
 
   /**
-   * Wait for an email to be verified
+   * Check that the email has eventually been verified.
    *
    * @param email
    *        (string)    The email address to expect
@@ -295,28 +308,27 @@ var API = module.exports = function API(config, onready) {
    * @param callback
    *        (function)  Function to invoke on completion
    *
-   * Poll for receipt of email.  Timeout after 5 secs.
+   * If the email hasn't arrived within 10 seconds, callback
+   * with an error and remove the callback from the dictionary
+   * of waiting callbacks.
    */
   this._waitForEmail = function _waitForEmail(email, callback) {
-    logEvent("Awaiting return email", email);
-    self.emit('message', "Awaiting " + email + " ...");
-    expectSoon(
-      function() {
-          return (!! self.availableEmails[email]);
-        },
-        5000, // milliseconds,
-        function(it_worked) {
-          if (it_worked) {
-            logEvent("Received return email", email);
-            self.emit('message', "Received " + email);
-            redis.createClient().hgetall('ptu:email:'+email, callback);
-          } else {
-            logEvent("Timed out awaiting return email", email);
-            self.emit('error', "Timed out waiting for " + email);
-            callback("Timed out waiting for " + email);
-          }
-        }
-    );
+    // stash the callback in the emailCallbacks table.
+    this.emailCallbacks[email] = callback;
+    // If it's still there in 10 seconds, then the verifier did
+    // not hear a user-ready event for this email, and we error.
+    setTimeout(function() {
+      var still_there = self.emailCallbacks[email];
+      if (typeof still_there === 'function') {
+        var err = "Timed out awaiting return of email " + email;
+        logEvent(err);
+        self.emit('error', err);
+        callback(err);
+        delete(self.emailCallbacks[email]);
+      }
+      // if no callback was found, great!  Everything went
+      // according to plan and we just leave it at that.
+    }, 10000);
   };
 
   this._getEmail = function _getEmail(params, do_verify, callback) {
@@ -380,6 +392,7 @@ var API = module.exports = function API(config, onready) {
             pass: emailData.pass,
             token: emailData.token,
             expires: emailData.expires,
+            context: JSON.parse(emailData.context),
             env: emailData.env,
             browserid: vconf[emailData.env].browserid,
             verifier: vconf[emailData.env].verifier
@@ -408,6 +421,7 @@ var API = module.exports = function API(config, onready) {
             email: emailData.email,
             pass: emailData.pass,
             expires: emailData.expires,
+            context: JSON.parse(emailData.context),
             env: emailData.env,
             browserid: vconf[emailData.env].browserid,
             verifier: vconf[emailData.env].verifier
@@ -480,6 +494,7 @@ var API = module.exports = function API(config, onready) {
                  email: userData.email,
                  pass: userData.pass,
                  expires: userData.expires,
+                 context: JSON.parse(userData.context),
                  env: userData.env,
                  browserid: serverEnv.browserid,
                  verifier: serverEnv.verifier,
