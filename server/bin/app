@@ -87,7 +87,7 @@ app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
 app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
   var env = req.param('env', 'prod');
   var start = Date.now();
-  var startEvent = "GET /unverified_email/" + env;
+  var startEvent = "START " + start + ": GET /unverified_email/" + env;
 
   api.getUnverifiedEmail({env:env}, function(err, data) {
     if (err) {
@@ -174,7 +174,7 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
   var env = req.param('env', 'prod');
 
   var start = Date.now();
-  logEvent("GET /assertion/<aud>/<email>/<password>", email);
+  logEvent("START " + start + ": GET /assertion/<aud>/<email>/<password>", email);
 
   // check if account exists
   api.getUserData(email, pass, function(err, data) {
@@ -213,7 +213,7 @@ app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAnd
 
   var env = req.param('env', 'prod');
   var start = Date.now();
-  var startEvent = "START " + start + "GET /email_with_assertion/<aud>/" + env;
+  var startEvent = "START " + start + ": GET /email_with_assertion/<aud>/" + env;
 
   api.getVerifiedEmail({env:env}, function(err, data) {
     if (err || !data) {
