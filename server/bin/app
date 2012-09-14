@@ -74,8 +74,8 @@ function dataWithEvents(res, data, start) {
 }
 
 app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
-  var env = req.param('env', 'prod');
   var start = Date.now();
+  var env = req.param('env', 'prod');
   // save start event for logging once we have an email to log it to
   var startEvent = "GET /email/" + env;
 
@@ -92,8 +92,8 @@ app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
 });
 
 app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
-  var env = req.param('env', 'prod');
   var start = Date.now();
+  var env = req.param('env', 'prod');
   var startEvent = "GET /unverified_email/" + env;
 
   api.getUnverifiedEmail({env:env}, function(err, data) {
@@ -208,10 +208,10 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
 });
 
 app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
+  var start = Date.now();
   if (check_malformed_audience(req.param('audience'), res)) { return null; }
 
   var env = req.param('env', 'prod');
-  var start = Date.now();
   var startEvent = "GET /email_with_assertion/<aud>/" + env;
 
   api.getVerifiedEmail({env:env}, function(err, data) {
