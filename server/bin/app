@@ -75,7 +75,7 @@ app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
       return res.end();
     }
     res.contentType('json');
-    logEvent(startEvent, data.email);
+    logEvent(startEvent, data.email, start);
     logEvent("Done", data.email);
     fetchEvents(data.email, start, function(err, stream) {
       data['events'] = stream;
@@ -96,7 +96,7 @@ app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, r
       return res.end();
     }
     res.contentType('json');
-    logEvent(startEvent, data.email);
+    logEvent(startEvent, data.email, start);
     logEvent("Done", data.email);
     fetchEvents(data.email, start, function(err, stream) {
       data['events'] = stream;
@@ -221,7 +221,7 @@ app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAnd
       res.writeHead(500);
       return res.end();
     }
-    logEvent(startEvent, data.email);
+    logEvent(startEvent, data.email, start);
     return _getAssertion(data.email, data.pass, req.param('audience'), req, res, start);
   });
 });
