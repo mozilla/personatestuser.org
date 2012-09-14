@@ -62,11 +62,22 @@ app.get('/', function(req, res) {
   res.render('index');
 });
 
+function dataWithEvents(res, data, start) {
+  logEvent("Done", data.email);
+  fetchEvents(data.email, start, function(err, stream) {
+    data['events'] = {
+      'start': start,
+      'stream': stream
+    };
+    return res.end(JSON.stringify(data));
+  });
+}
+
 app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
   var env = req.param('env', 'prod');
   var start = Date.now();
   // save start event for logging once we have an email to log it to
-  var startEvent = "START " + start + ": GET /email/" + env;
+  var startEvent = "GET /email/" + env;
 
   api.getVerifiedEmail({env:env}, function(err, data) {
     if (err) {
@@ -76,18 +87,14 @@ app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
     }
     res.contentType('json');
     logEvent(startEvent, data.email, start);
-    logEvent("Done", data.email);
-    fetchEvents(data.email, start, function(err, stream) {
-      data['events'] = stream;
-      return res.end(JSON.stringify(data));
-    });
+    return dataWithEvents(res, data, start);
   });
 });
 
 app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
   var env = req.param('env', 'prod');
   var start = Date.now();
-  var startEvent = "START " + start + ": GET /unverified_email/" + env;
+  var startEvent = "GET /unverified_email/" + env;
 
   api.getUnverifiedEmail({env:env}, function(err, data) {
     if (err) {
@@ -97,11 +104,7 @@ app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, r
     }
     res.contentType('json');
     logEvent(startEvent, data.email, start);
-    logEvent("Done", data.email);
-    fetchEvents(data.email, start, function(err, stream) {
-      data['events'] = stream;
-      return res.end(JSON.stringify(data));
-    });
+    return dataWithEvents(res, data, start);
   });
 });
 
@@ -152,10 +155,7 @@ function _getAssertion(email, password, audience, req, res, start) {
       }
       res.contentType('json');
       logEvent("Done", email);
-      fetchEvents(email, start, function(err, stream) {
-        results['events'] = stream;
-        return res.end(JSON.stringify(results));
-      });
+      return dataWithEvents(res, results, start);
     });
   });
 };
@@ -166,15 +166,14 @@ function _getAssertion(email, password, audience, req, res, start) {
  * password first.
  */
 app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req, res) {
+  var start = Date.now();
   if (check_malformed_audience(req.param('audience'), res)) { return null; }
 
   var audience = req.param('audience');
   var email = req.param('email');
   var pass = req.param('password');
   var env = req.param('env', 'prod');
-
-  var start = Date.now();
-  logEvent("START " + start + ": GET /assertion/<aud>/<email>/<password>", email);
+  logEvent("GET /assertion/<aud>/<email>/<password>", email);
 
   // check if account exists
   api.getUserData(email, pass, function(err, data) {
@@ -187,7 +186,7 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
     // Account exists and caller knows the right password.
     // Get assertion.
     if (data) {
-      return _getAssertion(email, pass, audience, req, res);
+      return _getAssertion(email, pass, audience, req, res, start);
     }
 
     // Email does not exist.  Create account first; then get assertion
@@ -199,7 +198,7 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
     };
     api.getVerifiedEmail(params, function(err, userData) {
       if (userData && !err) {
-        return _getAssertion(email, pass, audience, req, res);
+        return _getAssertion(email, pass, audience, req, res, start);
       }
       return res.writeHead(500);
       return res.end();
@@ -213,7 +212,7 @@ app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAnd
 
   var env = req.param('env', 'prod');
   var start = Date.now();
-  var startEvent = "START " + start + ": GET /email_with_assertion/<aud>/" + env;
+  var startEvent = "GET /email_with_assertion/<aud>/" + env;
 
   api.getVerifiedEmail({env:env}, function(err, data) {
     if (err || !data) {
