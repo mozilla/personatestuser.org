@@ -365,6 +365,7 @@ var API = module.exports = function API(config, onready) {
       return callback("params missing required email");
     }
     jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
+      logEvent("Keypair generated", params.email);
       redis.createClient().hmset('ptu:email:'+params.email, {
         publicKey: kp.publicKey.serialize(),
         secretKey: kp.secretKey.serialize()
