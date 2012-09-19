@@ -190,7 +190,7 @@ var getSessionContext = function getSessionContext(config, context, callback) {
 var _getAddressInfo = function _getAddressInfo(config, context, callback) {
   // I don't know if we care about the address info ...
   // Modify @context in place
-  logEvent('GET /wspai/address_info', context.email);
+  logEvent('GET /wsapi/address_info', context.email);
 
   wsapi.get(config, '/wsapi/address_info', context, {
     email: context.email
