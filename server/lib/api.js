@@ -368,6 +368,7 @@ var API = module.exports = function API(config, onready) {
             email: emailData.email,
             pass: emailData.pass,
             token: emailData.token,
+            headers: JSON.parse(emailData.headers),
             expires: emailData.expires,
             context: JSON.parse(emailData.context),
             env: emailData.env,
@@ -397,6 +398,7 @@ var API = module.exports = function API(config, onready) {
           return callback(null, {
             email: emailData.email,
             pass: emailData.pass,
+            headers: JSON.parse(emailData.headers),
             expires: emailData.expires,
             context: JSON.parse(emailData.context),
             env: emailData.env,
@@ -467,6 +469,7 @@ var API = module.exports = function API(config, onready) {
               return callback(null, {
                  email: userData.email,
                  pass: userData.pass,
+                 headers: JSON.parse(userData.headers),
                  expires: userData.expires,
                  context: JSON.parse(userData.context),
                  env: userData.env,
