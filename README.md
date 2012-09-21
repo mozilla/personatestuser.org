@@ -22,8 +22,26 @@ or programmatic approaches.
 
 The queries are all HTTP GETs; they return JSON.  Sometimes, an
 optional final argument *env* may be applied.  This may be one of
-`prod`, `dev`, `stage`, and `local`.  It specifies which development
-environment to query.
+`prod`, `stage`, `dev`, `local`, or `custom`.  The default is `prod`.
+
+The first three (`prod`, `stage`, and `dev`) are shorthand for the
+Persona production, staging, and development instances.  `local`
+is shorthand for localhost.
+
+If you specify `custom`, you must provide two parameters: `browserid`
+and `verifier`, specifying which urls personatestuser should use.
+
+For example, this gets a new verified email address from Persona:
+
+    GET /email/
+
+This gets a verified email using a custom Persona deployment:
+
+    GET /email/custom?browserid=my.ephemeral.org&verifier=my.ephemeral.org/verify
+
+You can also use an IP address:
+
+    GET /email/custom?browserid=12.34.56.78&verifier=12.34.56.78/verify
 
 All queries return a JSON string on success with some or all of the
 following fields:
@@ -32,7 +50,7 @@ following fields:
 - `pass` The password for the account
 - `token` A verification token for use with the identity provider
 - `expires` Expiration date in seconds since the epoch
-- `env` The name of the server environment ("prod", "dev", "stage", or "local")
+- `env` The name of the server environment ("prod", "dev", "stage", "local", "custom")
 - `browserid` The url for the IdP specified by env
 - `verifier` The url for the verifier specified by env
 - `audience` The audience an assertion is valid for
@@ -94,7 +112,3 @@ been create for a certain env.
 
 You do not need to cancel accounts created with this tool.  Email
 accounts are automatically canceled with the IdP after one hour.
-
-
-
-
