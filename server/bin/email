@@ -43,6 +43,7 @@ var server = smtp.createServer('restmail.net', function (req) {
         logEvent("email with verification url received", address);
         db.rpush('ptu:mailq', JSON.stringify({
           email: address,
+          headers: mail.headers,
           token: match[1]
         }));
       } else {

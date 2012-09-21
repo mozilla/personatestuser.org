@@ -100,6 +100,7 @@ var Verifier = function Verifier() {
       }
 
       var email = data.email;
+      var headers = data.headers;
       var token = data.token;
       if (! (email && token)) {
         console.log("_startVerifyingEmails: require both email and token");
@@ -110,7 +111,7 @@ var Verifier = function Verifier() {
       // Stash the token, which is necessary to complete the bid
       // verification process, and then get all the data on this user
 	  var multi = redis.createClient().multi();
-      multi.hset('ptu:email:'+email, 'token', token);
+      multi.hmset('ptu:email:'+email, 'token', token, 'headers', JSON.stringify(headers));
       multi.hgetall('ptu:email:'+email);
       multi.exec(function(err, results) {
         if (err || results.length < 2) {
