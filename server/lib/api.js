@@ -8,9 +8,9 @@ const jwcrypto = require('jwcrypto'),
       unixTime = require('./time').unixTime,
       redis = require('redis'),
       logEvent = require('./events').logEvent,
-      vconf = require('./vconf'),
       ALGORITHM = "RS",
       KEYSIZE = 256,
+      EMAIL_TIMEOUT = 60 * 1000,
       ONE_MIN_IN_SECONDS = 60,
       ONE_HOUR_IN_SECONDS= 60 * 60;
 
@@ -46,7 +46,9 @@ var API = module.exports = function API(config, onready) {
   //                      password  password for email account
   //                      context   IdP wsapi context (JSON string)
   //                      token     verifier token (JSON string)
-  //                      env       server env (prod, dev, stage)
+  //                      env       server env (prod, dev, stage, local, custom)
+  //                      browserid browserid url
+  //                      verifier  verifier url
   //                      do_verify flag
   // ptu:events:<email> = zset of events pertaining to an email address
   //
@@ -60,13 +62,19 @@ var API = module.exports = function API(config, onready) {
 
     // asynchronously cull the outdated emails in valid and staging
     redis.createClient().zrangebyscore('ptu:emails:valid', '-inf', age, function(err, results) {
-      if (err) return callback(err);
+      if (err) {
+        console.log("ERROR: _cullOldEmails, looking for valid emails:", err);
+        return callback(err);
+      }
       results.forEach(function(email) {
         toCull[email] = true;
       });
 
       redis.createClient().zrangebyscore('ptu:emails:staging', '-inf', age, function(err, results) {
-        if (err) return callback(err);
+        if (err) {
+          console.log("ERROR: _cullOldEmails, looking for staging emails:", err);
+          return callback(err);
+        }
         results.forEach(function(email) {
           toCull[email] = true;
         });
@@ -80,15 +88,26 @@ var API = module.exports = function API(config, onready) {
         // delete the account
         var multi = redis.createClient().multi();
         Object.keys(toCull).forEach(function(email) {
-          multi.hmget('ptu:email:'+email, 'email', 'pass', 'env');
+          console.log("Will cull expired email: " + email);
+          multi.hmget('ptu:email:'+email, 'email', 'pass', 'browserid');
         });
-        multi.exec(function(err, contexts) {
-          if (err) return callback(err);
+        multi.exec(function(err, tuples) {
+          if (err) {
+            console.log("ERROR: redis multi:", err);
+            return callback(err);
+          }
           var multi = redis.createClient().multi();
-          contexts.forEach(function(context) {
+          tuples.forEach(function(tuple) {
             // Push the email to be culled and its domain onto the expired queue.
             // The bid module will take it from there and tell the IdP to delete
             // the account.
+
+            // Each context is a list, not a dictionary.
+            var context = {
+              email: tuple[0],
+              pass: tuple[1],
+              browserid: tuple[2]
+            };
 
             // The data will actually be delete by bid.cancelAccount
             // Which indicates that these functions belong back in the bid module ...
@@ -112,13 +131,13 @@ var API = module.exports = function API(config, onready) {
       var one_hour_ago = unixTime() - ONE_HOUR_IN_SECONDS;
 
       self._cullOldEmails(one_hour_ago, function(err, n) {
-        if (err) console.log("ERROR: _cullOldEmails returned: " + err);
+        if (err) console.log("ERROR: _cullOldEmails returned: " + err.toString());
       });
     }, interval_ms);
   };
 
 
-  // The verifier waits for emails to arrive from the IdP asking the
+  // The emailVerifier waits for emails to arrive from the IdP asking the
   // test user to complete the registration steps in ... his? her? its?
   // account.  It takes care of the transaction with the IdP and emits
   // a 'user-created' signal, which carries the email, when an email
@@ -129,15 +148,15 @@ var API = module.exports = function API(config, onready) {
   // network issues, intense solar flare activity, frisky smurfs, etc.  So
   // getVerifiedEmail (below) will timeout and return an error if the email
   // creation has not completed within five seconds.
-  this.verifier = new bid.Verifier(vconf);
+  this.emailVerifier = new bid.EmailVerifier();
   this.emailCallbacks = {};
-  this.verifier.on('error', function(err) {
-    console.log("Verifier ERROR: " + err);
+  this.emailVerifier.on('error', function(err) {
+    console.log("EmailVerifier ERROR: " + err);
   });
 
   // When an email is ready, fire the callback that's waiting for it, and
   // remove the callback.
-  this.verifier.on('user-ready', function(email, data) {
+  this.emailVerifier.on('user-ready', function(email, data) {
     var callback = self.emailCallbacks[email];
     if (typeof callback === 'function') {
       var msg = "Received return email " + email;
@@ -157,14 +176,16 @@ var API = module.exports = function API(config, onready) {
   onready(null);
 
   this._stageEmail = function _stageEmail(params, callback) {
-    if (! (params.email && params.pass && params.env && params.expires)) {
+    if (! (params.email && params.pass && params.browserid && params.verifier && params.expires)) {
       return callback("Missing required params for stageEmail");
     }
     var multi = redis.createClient().multi();
     multi.zadd('ptu:emails:staging', params.expires, params.email);
     multi.hmset('ptu:email:'+params.email, params);
     multi.exec(function(err) {
-      if (err) return callback(err);
+      if (err) {
+        return callback(err);
+      }
       return callback(null, params);
     });
   };
@@ -174,9 +195,11 @@ var API = module.exports = function API(config, onready) {
    *
    * @param params
    *        (dict)      Must contain the fields:
-   *                    name     username for email
-   *                    pass     password
-   *                    env      browserid server env to use
+   *                    name       username for email
+   *                    pass       password
+   *                    env        prod, stage, dev, local, custom
+   *                    browserid  browserid server to use (if custom)
+   *                    verfier    verifier server to use (if custom)
    *
    * @param callback
    *        (function)  Callback to invoke when finished
@@ -196,8 +219,10 @@ var API = module.exports = function API(config, onready) {
     var email = (params.email || "").trim();
     var pass = (params.pass || "").trim();
     var env = params.env;
+    var browserid = (params.browserid || "").trim();
+    var verifier = (params.verifier || "").trim();
 
-    if (! (email && pass && env)) {
+    if (! (email && pass && browserid && verifier)) {
       return callback("Missing required params for _createNewEmail");
     }
 
@@ -210,6 +235,7 @@ var API = module.exports = function API(config, onready) {
     // Check whether this email exists already
     redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
       if (err) {
+        console.log("ERROR: _createNewEmail: redis hgetall:", err);
         return callback(err);
       }
 
@@ -220,6 +246,7 @@ var API = module.exports = function API(config, onready) {
         var expires = unixTime() + ONE_HOUR_IN_SECONDS;
         redis.createClient().hset('ptu:email:'+email, 'expires', expires, function(err) {
           if (err) {
+            console.log("ERROR: _createNewEmail: redis hset:", err);
             return callback(err);
           }
           data.expires = expires;
@@ -239,7 +266,9 @@ var API = module.exports = function API(config, onready) {
           email: email,
           pass: pass,
           expires: unixTime() + ONE_HOUR_IN_SECONDS,
-          env: env
+          env: env,
+          browserid: browserid,
+          verifier: verifier
         };
         return self._stageEmail(params, callback);
       }
@@ -251,7 +280,9 @@ var API = module.exports = function API(config, onready) {
    *
    * @param params
    *        (dict)      Required field:
-   *                    env     The browserid server env to use
+   *                    env        Description of the browserid server env to use
+   *                    browserid  browserid server to use
+   *                    verfier    verifier server to use
    *
    * @param callback
    *        (function)  Callback to invoke when finished
@@ -263,14 +294,23 @@ var API = module.exports = function API(config, onready) {
     // we will assign the exact email below
     var email;
 
+    if (!params.browserid) return callback("browserid url param required for custom env");
+    if (!params.verifier) return callback("verifier url param required for custom env");
+
     redis.createClient().incr('ptu:nextval', function(err, val) {
+      if (err) {
+        console.log("ERROR: _generateNewEmail: redis:", err);
+        return callback(err);
+      }
       email = name + val + '@' + DEFAULT_DOMAIN;
       logEvent("Generate new email account", email);
       var data = {
         email: email,
         pass: pass,
         expires: unixTime() + ONE_HOUR_IN_SECONDS,
-        env: params.env
+        env: params.env,
+        browserid: params.browserid,
+        verifier: params.verifier
       };
       self._stageEmail(data, callback);
     });
@@ -297,7 +337,7 @@ var API = module.exports = function API(config, onready) {
     setTimeout(function() {
       var still_there = self.emailCallbacks[email];
       if (typeof still_there === 'function') {
-        var err = "Timed out awaiting return of email " + email;
+        var err = "Timed out after " + EMAIL_TIMEOUT + "ms awaiting return of email " + email;
         logEvent(err, email);
         self.emit('error', err);
         callback(err);
@@ -305,7 +345,7 @@ var API = module.exports = function API(config, onready) {
       }
       // if no callback was found, great!  Everything went
       // according to plan and we just leave it at that.
-    }, 10000);
+    }, EMAIL_TIMEOUT);
   };
 
   this._getEmail = function _getEmail(params, do_verify, callback) {
@@ -320,7 +360,7 @@ var API = module.exports = function API(config, onready) {
       if (err) return callback(err);
       redis.createClient().hset('ptu:email:'+data.email, 'do_verify', do_verify, function(err) {
         if (err) return callback(err);
-        bid.createUser(vconf[params.env], data.email, data.pass, function(err) {
+        bid.createUser(params, data.email, data.pass, function(err) {
           if (err) {
             return callback(err);
           } else {
@@ -359,9 +399,13 @@ var API = module.exports = function API(config, onready) {
    */
   this.getUnverifiedEmail = function getUnverifiedEmail(params, callback) {
     self._getEmail(params, 'no', function(err, email) {
-      if (err) return callback(err);
+      if (err) {
+        console.log("ERROR: getUnverifiedEmail: _getEmail returned", err.toString());
+        return callback(err);
+      }
       self._waitForEmail(email, function(err, emailData) {
         if (err) {
+          console.log("ERROR: getUnverifiedEmail: _waitForEmail returned", err.toString());
           return callback(err);
         } else {
           return callback(null, {
@@ -372,8 +416,8 @@ var API = module.exports = function API(config, onready) {
             expires: emailData.expires,
             context: JSON.parse(emailData.context),
             env: emailData.env,
-            browserid: vconf[emailData.env].browserid,
-            verifier: vconf[emailData.env].verifier
+            browserid: emailData.browserid,
+            verifier: emailData.verifier
           });
         }
       });
@@ -388,9 +432,13 @@ var API = module.exports = function API(config, onready) {
    */
   this.getVerifiedEmail = function getVerifiedEmail(params, callback) {
     self._getEmail(params, 'yes', function(err, email) {
-      if (err) return callback(err);
+      if (err) {
+        console.log("ERROR: getVerifiedEmail: _getEmail returned:", err.toString());
+        return callback(err);
+      }
       self._waitForEmail(email, function(err, emailData) {
         if (err) {
+          console.log("ERROR: getVerifiedEmail: _waitForEmail returned:", err.toString());
           return callback(err);
         } else {
           // With a verified email, we don't send back the
@@ -402,8 +450,8 @@ var API = module.exports = function API(config, onready) {
             expires: emailData.expires,
             context: JSON.parse(emailData.context),
             env: emailData.env,
-            browserid: vconf[emailData.env].browserid,
-            verifier: vconf[emailData.env].verifier
+            browserid: emailData.browserid,
+            verifier: emailData.verifier
           });
         }
       });
@@ -414,6 +462,7 @@ var API = module.exports = function API(config, onready) {
     // get the email data if the caller knows the right password
     redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
       if (err) {
+        console.log("ERROR: getUserData: redis hgetall:", err);
         return callback(err);
       }
 
@@ -431,8 +480,12 @@ var API = module.exports = function API(config, onready) {
 
   this.cancelAccount = function cancelAccount(email, pass, callback) {
     this.getUserData(email, pass, function(err, userData) {
-      if (err) return callback(err);
+      if (err) {
+        console.log("ERROR: cancelAccount: getUserData returned:", err.toString());
+        return callback(err);
+      }
       bid.cancelAccount(userData, function(err, results) {
+        if (err) console.log("ERROR: cancelAccount: bit.cancelAccount returned:", err.toString());
         return callback(err, results);
       });
     });
@@ -444,8 +497,12 @@ var API = module.exports = function API(config, onready) {
     var email = userData.email;
     var pass = userData.pass;
     var duration = userData.duration || (60 * 60 * 1000);
-    var serverEnv = vconf[userData.env];
-    if (! (email && pass && audience && serverEnv)) {
+    var serverEnv = {
+      browserid: userData.browserid,
+      verifier: userData.verifier
+    };
+
+    if (! (email && pass && audience && serverEnv.browserid && serverEnv.verifier)) {
       return callback(new Error("required param missing"));
     }
 
@@ -453,8 +510,20 @@ var API = module.exports = function API(config, onready) {
     var expiresAt = unixTime() * 1000 + duration;
 
     self._generateKeypair(userData, function(err, kp) {
+      if (err) {
+        console.log("ERROR: getAssertion: in _generateKeypair:", err);
+        return callback(err);
+      }
       bid.authenticateUser(serverEnv, email, pass, function(err) {
+        if (err) {
+          console.log("ERROR: getAssertion: bid.authenticateUser returned:", err.toString());
+          return callback(err);
+        }
         bid.certifyKey(serverEnv, email, kp.publicKey, function(err, res) {
+          if (err) {
+            console.log("ERROR: getAssertion: bid.certifyKey returned:", err.toString());
+            return callback(err);
+          }
           var cert = res.body;
           jwcrypto.assertion.sign(
             {},
