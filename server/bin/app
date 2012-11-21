@@ -18,7 +18,11 @@ const express = require('express'),
 var api = new API();
 var app = module.exports = express.createServer();
 
-const allowedEnvs = Object.keys(vconf);
+const allowedEnvs = ['custom', 'local', 'dev', 'stage', 'prod'];
+
+// A regex to validate browserid and verifier urls.
+// Urls can have domain names or ipv4 dot quad numbers
+const validUrlRE = new RegExp('^https://([\\w\\d_-]+\\.)+([\\w\\d]+)(/[\\w\\d_-]+)*$');
 
 var io = socket_io.listen(app);
 io.set('log level', 1);
@@ -28,6 +32,7 @@ io.set('log level', 1);
 app.configure(function(){
   app.set('views', path.join(__dirname, '..', 'views'));
   app.set('view engine', 'jade');
+  app.use(express.logger());
   app.use(express.bodyParser());
   app.use(express.methodOverride());
   app.use(app.router);
@@ -44,14 +49,43 @@ app.configure('production', function(){
 
 // middleware
 
+/*
+ * Ensure that the env is valid, and inject browserid and verifier
+ * into req.query if necessary.
+ */
 function verifyEnv(req, res, next) {
   var serverEnv = req.param('env', 'prod');
   if (allowedEnvs.indexOf(serverEnv) === -1) {
     res.writeHead(400);
     return res.end("env must be one of " + allowedEnvs.join(', '));
   } else {
-    // XXX apparently this assignment doens't work
-    req.param['env'] = serverEnv;
+    if (serverEnv !== 'custom') {
+      req.query['browserid'] = vconf[serverEnv].browserid;
+      req.query['verifier'] = vconf[serverEnv].verifier;
+    } else {
+      if (!req.query['browserid']) return res.end("Missing browserid url in query");
+      if (!req.query['verifier']) return res.end("Missing verifier url in query");
+    }
+
+    // Must be https
+    if (req.query['browserid'].slice(0,8) !== "https://") {
+      req.query['browserid'] = "https://" + req.query['browserid'];
+    }
+    if (req.query['verifier'].slice(0,8) !== "https://") {
+      req.query['verifier'] = "https://" + req.query['verifier'];
+    }
+
+    // Check those urls for sanity.
+    if (! validUrlRE.test(req.query['browserid'])) {
+      return res.end("BrowserID url invalid");
+    }
+    if (! validUrlRE.test(req.query['verifier'])) {
+      return res.end("Verifiery url invalid");
+    }
+
+    if (! (req.query.browserid && req.query.verifier)) {
+      return res.end("missing browserid or verifier url");
+    }
     next();
   }
 }
@@ -76,13 +110,22 @@ function dataWithEvents(res, data, start) {
 app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
   var start = Date.now();
   var env = req.param('env', 'prod');
+
+  // browserid and verifier injected into query by verifyEnv middleware
+  var params = {
+    env: env,
+    browserid: req.query.browserid,
+    verifier: req.query.verifier
+  };
+
   // save start event for logging once we have an email to log it to
   var startEvent = "GET /email/" + env;
 
-  api.getVerifiedEmail({env:env}, function(err, data) {
+  api.getVerifiedEmail(params, function(err, data) {
     if (err) {
-      console.log("ERROR: getVerifiedEmail: " + err);
+      console.log("ERROR: Cannot get email: " + err.toString());
       res.writeHead(500);
+      res.write(err.toString());
       return res.end();
     }
     res.contentType('json');
@@ -94,12 +137,21 @@ app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
 app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
   var start = Date.now();
   var env = req.param('env', 'prod');
+
+  // browserid and verifier injected into query by verifyEnv middleware
+  var params = {
+    env: env,
+    browserid: req.query.browserid,
+    verifier: req.query.verifier
+  };
+
   var startEvent = "GET /unverified_email/" + env;
 
-  api.getUnverifiedEmail({env:env}, function(err, data) {
+  api.getUnverifiedEmail(params, function(err, data) {
     if (err) {
-      console.log("ERROR: getUnverifiedEmail: " + err);
+      console.log("ERROR: Cannot get unverified email: " + err.toString());
       res.writeHead(500);
+      res.write(err.toString());
       return res.end();
     }
     res.contentType('json');
@@ -111,8 +163,9 @@ app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, r
 app.get('/cancel/:email/:password', function cancelAccount(req, res) {
   api.cancelAccount(req.param('email'), req.param('password'), function(err, data) {
     if (err) {
-      console.log("ERROR: cancelAccount: " + err);
+      console.log("ERROR: Cannot cancel account: " + err.toString());
       res.writeHead(500);
+      res.write(err.toString());
       return res.end();
     }
     res.contentType('json');
@@ -136,7 +189,7 @@ function _getAssertion(email, password, audience, req, res, start) {
 
   api.getUserData(email, password, function(err, userData) {
     if (err) {
-      console.log("ERROR: getUserData: " + err);
+      console.log("ERROR: _getAssertion cannot get user data: " + err.toString());
       res.writeHead(401);
       return res.end();
     }
@@ -149,8 +202,9 @@ function _getAssertion(email, password, audience, req, res, start) {
 
     api.getAssertion(userData, audience, function(err, results) {
       if (err || !results) {
-        console.log("ERROR: getAssertion: " + err);
+        console.log("ERROR: Cannot getAssertion: " + err.toString());
         res.writeHead(500);
+        res.write(err.toString());
         return res.end();
       }
       res.contentType('json');
@@ -173,13 +227,16 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
   var email = req.param('email');
   var pass = req.param('password');
   var env = req.param('env', 'prod');
+
   logEvent("GET /assertion/<aud>/<email>/<password>", email);
 
   // check if account exists
   api.getUserData(email, pass, function(err, data) {
     // Invalid password or other error
     if (err) {
+      console.log("ERROR: Cannot get assertion:", err.toString());
       res.writeHead(500);
+      res.write(err.toString());
       return res.end();
     }
 
@@ -190,17 +247,22 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
     }
 
     // Email does not exist.  Create account first; then get assertion
+    // browserid and verifier injected into query by verifyEnv middleware
     var params = {
       email: email,
       pass: pass,
       audience: audience,
+      browserid: req.query.browserid,
+      verifier: req.query.verifier,
       env: env
     };
     api.getVerifiedEmail(params, function(err, userData) {
+      if (err) console.log("ERROR: Cannot get assertion:", err.toString());
       if (userData && !err) {
         return _getAssertion(email, pass, audience, req, res, start);
       }
-      return res.writeHead(500);
+      res.writeHead(500);
+      res.write(err.toString());
       return res.end();
     });
   });
@@ -212,12 +274,21 @@ app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAnd
   if (check_malformed_audience(req.param('audience'), res)) { return null; }
 
   var env = req.param('env', 'prod');
+
+  // browserid and verifier injected into query by verifyEnv middleware
+  var params = {
+    env: env,
+    browserid: req.query.browserid,
+    verifier: req.query.verifier
+  };
+
   var startEvent = "GET /email_with_assertion/<aud>/" + env;
 
-  api.getVerifiedEmail({env:env}, function(err, data) {
+  api.getVerifiedEmail(params, function(err, data) {
+    if (err) console.log("ERROR: Cannot get email with assertion:", err.toString());
     if (err || !data) {
-      console.log("ERROR: getVerifiedEmail: " + err);
       res.writeHead(500);
+      res.write(err.toString());
       return res.end();
     }
     logEvent(startEvent, data.email, start);
@@ -243,17 +314,22 @@ io.on('connection', function(socket) {
   socket.on('message', function(data) {
     if (data.method) {
       var serverEnv = data.env ? data.env : 'prod';
+      var config = {
+        env: serverEnv,
+        browserid: vconf[serverEnv].browserid,
+        verifier: vconf[serverEnv].verifier
+      };
       if (allowedEnvs.indexOf(serverEnv) === -1) {
         socket.json.send({err: "Unsupported env: " + data.env});
       } else {
         switch(data.method) {
           case 'getVerifiedEmail':
-            api.getVerifiedEmail({env:serverEnv}, function(err, user) {
+            api.getVerifiedEmail(config, function(err, user) {
               socket.json.send({err: err, type: "verifiedEmail", data: user});
             });
             break;
           case 'getUnverifiedEmail':
-            api.getUnverifiedEmail({env:serverEnv}, function(err, user) {
+            api.getUnverifiedEmail(config, function(err, user) {
               socket.json.send({err: err, type: "unverifiedEmail", data: user});
             });
             break;
@@ -269,6 +345,6 @@ io.on('connection', function(socket) {
 if (!module.parent) {
   var port = parseInt(process.env['PORT'] || '3000', 10);
   app.listen(port, function(){
-    console.log("Express server listening on port %d in %s mode", app.address().port, app.settings.env);
+   console.log("Express server listening on port %d in %s mode", app.address().port, app.settings.env);
   });
 }

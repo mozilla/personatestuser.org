@@ -4,6 +4,7 @@
   "version": "0.1.0",
 
   "dependencies": {
+    "awsmang-connect": "0.0.2",
     "express": "2.5.9",
     "jade": ">0.0.1",
     "jwcrypto": "0.2.2",

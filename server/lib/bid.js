@@ -6,13 +6,12 @@ const util = require('util'),
       events = require('events'),
       redis = require('redis'),
       redisConf = require('./config'),
-      vconf = require('./vconf'),
       wsapi = require('./wsapi_client'),
       logEvent = require('./events').logEvent,
       db = redis.createClient();
 
 /**
- * The Verifier sits and waits for asynchronous verification emails
+ * The EmailVerifier sits and waits for asynchronous verification emails
  * to show up in redis, where the mail daemon will push them on
  * arrival.
  *
@@ -22,7 +21,7 @@ const util = require('util'),
  *
  * The api will catch the happy signal inside the create user sequence.
  */
-var Verifier = function Verifier() {
+var EmailVerifier = function EmailVerifier() {
   events.EventEmitter.call(this);
   var self = this;
 
@@ -41,8 +40,12 @@ var Verifier = function Verifier() {
 
   this.completeUserCreation = function completeUserCreation(userData, callback) {
     var err = null;
+    var config = {
+      browserid: userData.browserid,
+      verifier: userData.verifier
+    };
     logEvent('POST /wsapi/complete_user_creation', userData.email);
-    wsapi.post(vconf[userData.env], '/wsapi/complete_user_creation', {}, {
+    wsapi.post(config, '/wsapi/complete_user_creation', {}, {
       token: userData.token,
       pass: userData.pass
     }, function(err, res) {
@@ -67,18 +70,15 @@ var Verifier = function Verifier() {
    */
   this._startCancelingExpiredEmails = function _startCancelingExpiredEmails() {
     redis.createClient().blpop('ptu:expired', 0, function(err, data) {
-      // data is a tuple like [qname, data]
-      // where data contains a context of an expired account
+      // data is a tuple like [qname, context]
       try {
-        data = JSON.parse(data[1]);
-        var email = data[0];
-        var env = data[1];
-        cancelAccount(email, env, function(err) {
-          if (err) console.log("ERROR: cancelAccount returned: " + err);
+        var context = JSON.parse(data[1]);
+        cancelAccount(context, function(err) {
+          if (err) console.log("ERROR: cancelAccount("+context.email+") returned: " + err);
         });
       } catch (err) {
         // XXX should flush from redis anyway?
-        // console.log("ERROR: _startCancelingExpiredEmails: " + err);
+        console.log("ERROR: _startCancelingExpiredEmails: " + err);
       }
 
       // Don't flood the server with account deletions.  No more than
@@ -144,7 +144,7 @@ var Verifier = function Verifier() {
   return this;
 };
 
-util.inherits(Verifier, events.EventEmitter);
+util.inherits(EmailVerifier, events.EventEmitter);
 
 var getSessionContext = function getSessionContext(config, context, callback) {
   // Get a session_context
@@ -153,11 +153,13 @@ var getSessionContext = function getSessionContext(config, context, callback) {
 
   wsapi.get(config, '/wsapi/session_context', context, {
   }, function(err, res) {
-    logEvent("/wsapi/session_context returned " + res.statusCode, context.email);
-
     if (err) {
       logEvent(err.toString(), context.email);
       return callback(err);
+    }
+
+    if (res && res.statusCode) {
+      logEvent("/wsapi/session_context returned " + res.statusCode, context.email);
     }
 
     if (res.statusCode !== 200) {
@@ -270,6 +272,7 @@ var stageUser = function stageUser(config, context, callback) {
     }
 
     if (res.statusCode !== 200) {
+      // log any non-200 response
       console.log("ERROR: stageUser: err=" + err + ", server code=" + res.statusCode);
     }
 
@@ -363,12 +366,12 @@ var cancelAccount = function cancelAccount(context, callback) {
       .zrem('ptu:emails:valid', context.email)
       .exec();
   }
-  if (Object.keys(vconf).indexOf(context.env) === -1) {
-    // if env is not prod, dev, or stage, then default to prod
-    context.env = 'prod';
-  }
 
-  wsapi.post(vconf[context.env], '/wsapi/authenticate_user', context, {
+  var config = {
+    browserid: context.browserid,
+    verifier: context.verifier
+  };
+  wsapi.post(config, '/wsapi/authenticate_user', context, {
     email: context.email,
     pass: context.pass,
     ephemeral: true
@@ -391,7 +394,7 @@ var cancelAccount = function cancelAccount(context, callback) {
     context.cookieJar = cookieJar;
 
     // Now cancel the account
-    wsapi.post(vconf[context.env], '/wsapi/account_cancel', context, {
+    wsapi.post(config, '/wsapi/account_cancel', context, {
       email: context.email,
       pass: context.pass
     }, function(err, res) {
@@ -418,4 +421,4 @@ module.exports.cancelAccount = cancelAccount;
 
 // higher-level compositions
 module.exports.createUser = createUser;
-module.exports.Verifier = Verifier;
+module.exports.EmailVerifier = EmailVerifier;

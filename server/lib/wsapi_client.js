@@ -66,7 +66,7 @@ exports.get = function(cfg, path, context, getArgs, cb) {
     followRedirect: true
   }, function(err, res, body) {
     if (err) {
-      console.log("ERROR: wsapi_client.get: " + err);
+      console.log("ERROR: wsapi_client.get " + cfg.browserid+path + " -> " + err);
       return cb(err);
     }
     extractCookies(context, res);
