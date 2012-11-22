@@ -19,10 +19,12 @@
   },
   "devDependencies": {
     "awsbox": "0.2.13",
+    "request": "2.9.203",
+    "underscore": "1.4.2",
     "vows": "0.6.2"
   },
   "scripts": {
     "start": "server/bin/app",
-    "test": "vows server/test/*_vows.js --spec"
+    "test": "vows test/*_vows.js --spec"
   }
 }

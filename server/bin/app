@@ -47,6 +47,25 @@ app.configure('production', function(){
   app.use(express.errorHandler());
 });
 
+// Utility
+
+function errorResponse(message, res, err) {
+  if (err) {
+    console.log("ERROR: " + message + ": " + err.toString());
+  } else {
+    console.log("ERROR: " + message);
+    err = new Error(message);
+  }
+
+  // XXX make sure headers have not already been set
+  res.write(JSON.stringify({
+    message: message,
+    error: err.message,
+    stack: err.stack
+  }));
+  return res.end();
+}
+
 // middleware
 
 /*
@@ -57,14 +76,18 @@ function verifyEnv(req, res, next) {
   var serverEnv = req.param('env', 'prod');
   if (allowedEnvs.indexOf(serverEnv) === -1) {
     res.writeHead(400);
-    return res.end("env must be one of " + allowedEnvs.join(', '));
+    return errorResponse("env must be one of: " + allowedEnvs.join(', '), res);
   } else {
     if (serverEnv !== 'custom') {
       req.query['browserid'] = vconf[serverEnv].browserid;
       req.query['verifier'] = vconf[serverEnv].verifier;
     } else {
-      if (!req.query['browserid']) return res.end("Missing browserid url in query");
-      if (!req.query['verifier']) return res.end("Missing verifier url in query");
+      if (!req.query['browserid']) {
+        return errorResponse("Missing browserid url in query", res);
+      }
+      if (!req.query['verifier']) {
+        return errorResponse("Missing verifier url in query", res);
+      }
     }
 
     // Must be https
@@ -77,17 +100,26 @@ function verifyEnv(req, res, next) {
 
     // Check those urls for sanity.
     if (! validUrlRE.test(req.query['browserid'])) {
-      return res.end("BrowserID url invalid");
+      return errorResponse("BrowserID url invalid: " + req.query['browserid'], res);
     }
     if (! validUrlRE.test(req.query['verifier'])) {
-      return res.end("Verifiery url invalid");
+      return errorResponse("Verifiery url invalid: " + req.query['verifier'], res);
     }
 
     if (! (req.query.browserid && req.query.verifier)) {
-      return res.end("missing browserid or verifier url");
+      return errorResponse("missing browserid or verifier url", res);
     }
     next();
   }
+}
+
+/*
+ * set the response content-type to json
+ */
+function jsonOut(req, res, next) {
+  console.log("setting content type");
+  res.contentType('application/json');
+  next();
 }
 
 // Routes
@@ -107,7 +139,7 @@ function dataWithEvents(res, data, start) {
   });
 }
 
-app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
+app.get('/email/:env?', verifyEnv, jsonOut, function getVerifiedEmail(req, res) {
   var start = Date.now();
   var env = req.param('env', 'prod');
 
@@ -123,18 +155,14 @@ app.get('/email/:env?', verifyEnv, function getVerifiedEmail(req, res) {
 
   api.getVerifiedEmail(params, function(err, data) {
     if (err) {
-      console.log("ERROR: Cannot get email: " + err.toString());
-      res.writeHead(500);
-      res.write(err.toString());
-      return res.end();
+      return errorResponse("Cannot get email", res, err);
     }
-    res.contentType('json');
     logEvent(startEvent, data.email, start);
     return dataWithEvents(res, data, start);
   });
 });
 
-app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, res) {
+app.get('/unverified_email/:env?', verifyEnv, jsonOut, function getUnverifiedEmail(req, res) {
   var start = Date.now();
   var env = req.param('env', 'prod');
 
@@ -149,38 +177,27 @@ app.get('/unverified_email/:env?', verifyEnv, function getUnverifiedEmail(req, r
 
   api.getUnverifiedEmail(params, function(err, data) {
     if (err) {
-      console.log("ERROR: Cannot get unverified email: " + err.toString());
-      res.writeHead(500);
-      res.write(err.toString());
-      return res.end();
+      return errorResponse("Cannot get unverified email", res, err);
     }
-    res.contentType('json');
     logEvent(startEvent, data.email, start);
     return dataWithEvents(res, data, start);
   });
 });
 
-app.get('/cancel/:email/:password', function cancelAccount(req, res) {
+app.get('/cancel/:email/:password', jsonOut, function cancelAccount(req, res) {
   api.cancelAccount(req.param('email'), req.param('password'), function(err, data) {
     if (err) {
-      console.log("ERROR: Cannot cancel account: " + err.toString());
-      res.writeHead(500);
-      res.write(err.toString());
-      return res.end();
+      return errorResponse("Cannot cancel account", res, err);
     }
-    res.contentType('json');
-    return res.end(JSON.stringify(data));
+    return res.end(data);
   });
 });
 
-function check_malformed_audience(audience, res) {
+function checkMalformedAudience(audience, res) {
   if (! /^https?:\/\//.test(audience)) {
-    res.setHeader('Content-Type', 'text/plain');
-    res.writeHead(400);
-    res.end("Audience '" + audience + "' must begin with protocol and be url encoded.\nFor example:\n\thttps%3A%2F%2F" + audience + "\n\n");
-    return true;
+    return new Error("Audience must begin with protocol and be url encode, like so: https%3A%2F%2F" + audience);
   }
-  return false;
+  return null;
 }
 
 function _getAssertion(email, password, audience, req, res, start) {
@@ -189,25 +206,17 @@ function _getAssertion(email, password, audience, req, res, start) {
 
   api.getUserData(email, password, function(err, userData) {
     if (err) {
-      console.log("ERROR: _getAssertion cannot get user data: " + err.toString());
-      res.writeHead(401);
-      return res.end();
+      return errorResponse("Cannot get user data", res, err);
     }
 
     if (!userData) {
-      console.log("getUserData: not found: " + email);
-      res.writeHead(404);
-      return res.end();
+      return errorResponse("personatestuser cannot find user: " + email, res);
     }
 
     api.getAssertion(userData, audience, function(err, results) {
       if (err || !results) {
-        console.log("ERROR: Cannot getAssertion: " + err.toString());
-        res.writeHead(500);
-        res.write(err.toString());
-        return res.end();
+        return errorResponse("Cannot get assertion", res, err);
       }
-      res.contentType('json');
       logEvent("Done", email);
       return dataWithEvents(res, results, start);
     });
@@ -219,9 +228,11 @@ function _getAssertion(email, password, audience, req, res, start) {
  * email does not exist, a new account will be created with email and
  * password first.
  */
-app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req, res) {
+app.get('/assertion/:audience/:email/:password/:env?', jsonOut, function getAssertion(req, res) {
   var start = Date.now();
-  if (check_malformed_audience(req.param('audience'), res)) { return null; }
+
+  var err = checkMalformedAudience(req.param('audience', res));
+  if (err) return errorResponse("Malformed audience parameter", res, err);
 
   var audience = req.param('audience');
   var email = req.param('email');
@@ -234,10 +245,7 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
   api.getUserData(email, pass, function(err, data) {
     // Invalid password or other error
     if (err) {
-      console.log("ERROR: Cannot get assertion:", err.toString());
-      res.writeHead(500);
-      res.write(err.toString());
-      return res.end();
+      return errorResponse("Cannot get assertion", res);
     }
 
     // Account exists and caller knows the right password.
@@ -257,13 +265,9 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
       env: env
     };
     api.getVerifiedEmail(params, function(err, userData) {
-      if (err) console.log("ERROR: Cannot get assertion:", err.toString());
-      if (userData && !err) {
-        return _getAssertion(email, pass, audience, req, res, start);
-      }
-      res.writeHead(500);
-      res.write(err.toString());
-      return res.end();
+      if (err) return errorResponse("Cannot get verified email for assertion", res, err);
+      if (!userData) return errorResponse("Cannot get user data for assertion", res);
+      return _getAssertion(email, pass, audience, req, res, start);
     });
   });
 
@@ -271,7 +275,9 @@ app.get('/assertion/:audience/:email/:password/:env?', function getAssertion(req
 
 app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAndAssertion(req, res) {
   var start = Date.now();
-  if (check_malformed_audience(req.param('audience'), res)) { return null; }
+
+  var err = checkMalformedAudience(req.param('audience', res));
+  if (err) return errorResponse("Malformed audience parameter", res, err);
 
   var env = req.param('env', 'prod');
 
@@ -285,12 +291,8 @@ app.get('/email_with_assertion/:audience/:env?', verifyEnv, function getEmailAnd
   var startEvent = "GET /email_with_assertion/<aud>/" + env;
 
   api.getVerifiedEmail(params, function(err, data) {
-    if (err) console.log("ERROR: Cannot get email with assertion:", err.toString());
-    if (err || !data) {
-      res.writeHead(500);
-      res.write(err.toString());
-      return res.end();
-    }
+    if (err) return errorResponse("Cannot get verified email for assertion", res, err);
+    if (!data) return errorResponse("Cannot get user data for assertion", res);
     logEvent(startEvent, data.email, start);
     return _getAssertion(data.email, data.pass, req.param('audience'), req, res, start);
   });
@@ -343,8 +345,8 @@ io.on('connection', function(socket) {
 });
 
 if (!module.parent) {
-  var port = parseInt(process.env['PORT'] || '3000', 10);
+  var port = parseInt(process.env['PORT'] || '3042', 10);
   app.listen(port, function(){
-   console.log("Express server listening on port %d in %s mode", app.address().port, app.settings.env);
+   console.log("personatestuser listening on port %d in %s mode", app.address().port, app.settings.env);
   });
 }
