@@ -223,13 +223,13 @@ var API = module.exports = function API(config, onready) {
     var verifier = (params.verifier || "").trim();
 
     if (! (email && pass && browserid && verifier)) {
-      return callback("Missing required params for _createNewEmail");
+      return callback(new Error("Missing required params for _createNewEmail"));
     }
 
     // sanity check that this email is ok for our domain
     var validEmailRE = new RegExp('^[\\w\\d_-]+@' + DEFAULT_DOMAIN + '$');
     if (! validEmailRE.test(email)) {
-      return callback("Email address invalid for " + DEFAULT_DOMAIN);
+      return callback(new Error("Email address invalid for " + DEFAULT_DOMAIN + ".  Got: " + email));
     }
 
     // Check whether this email exists already
@@ -256,7 +256,7 @@ var API = module.exports = function API(config, onready) {
 
       // Email exists, but caller doesn't know password.  Error.
       else if (data && data.pass !== pass) {
-        return callback("Password incorrect");
+        return callback(new Error("Password and username mismatch for " + email));
       }
 
       // Email does not exist.  Create it.
@@ -294,8 +294,8 @@ var API = module.exports = function API(config, onready) {
     // we will assign the exact email below
     var email;
 
-    if (!params.browserid) return callback("browserid url param required for custom env");
-    if (!params.verifier) return callback("verifier url param required for custom env");
+    if (!params.browserid) return callback(new Error("browserid url param required for custom env"));
+    if (!params.verifier) return callback(new Error("verifier url param required for custom env"));
 
     redis.createClient().incr('ptu:nextval', function(err, val) {
       if (err) {
@@ -379,7 +379,7 @@ var API = module.exports = function API(config, onready) {
   this._generateKeypair = function genKeyPair(params, callback) {
     logEvent("Generate keypair", params.email);
     if (!params.email) {
-      return callback("params missing required email");
+      return callback(new Error("params missing required email"));
     }
     jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
       logEvent("Keypair generated", params.email);
@@ -471,7 +471,7 @@ var API = module.exports = function API(config, onready) {
       }
 
       if (data.pass !== pass) {
-        return callback("Username and password do not match");
+        return callback(new Error("Username and password do not match"));
       }
 
       return callback(err, data);

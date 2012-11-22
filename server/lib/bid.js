@@ -52,11 +52,11 @@ var EmailVerifier = function EmailVerifier() {
       logEvent("/wsapi/complete_user_creation returned " + res.statusCode, userData.email);
       if (err) {
         logEvent(err.toString(), userData.email);
-        return callback("Can't complete user creation: " + err);
+        return callback(err);
       }
 
       if (res.statusCode !== 200) {
-        return callback("Server returned " + res.statusCode);
+        return callback(new Error("complete_user_creation returned code " + res.statusCode));
       }
 
       self._stagedEmailBecomesLive(userData, callback);
@@ -227,13 +227,13 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
     }, function(err, res) {
       logEvent("/wsapi/authenticate_user returned " + res.statusCode, email);
       if (res.statusCode !== 200) {
-        return callback("ERROR: authenticateUser: server returned " + res.statusCode);
+        return callback(new Error("authenticate_user returned " + res.statusCode));
       }
 
       var body = JSON.parse(res.body);
       if (body.success !== true) {
         logEvent("Authentication failed", email);
-        return callback("Authentication failed");
+        return callback(new Error("Authentication failed"));
       } else {
         // Save our updated tokens
         var set_cookie = res.headers['set-cookie'][0].split("=");
@@ -268,7 +268,7 @@ var stageUser = function stageUser(config, context, callback) {
     };
 
     if (!res) {
-      return callback("ERROR: stageUser: wsapi.post did not return a response");
+      return callback(new Error("stage_user did not return a response"));
     }
 
     if (res.statusCode !== 200) {
@@ -278,11 +278,11 @@ var stageUser = function stageUser(config, context, callback) {
 
     if (res.statusCode === 429) {
       // too many requests!
-      return callback(new Error("Can't stage user: we're flooding the server"));
+      return callback(new Error("stage_user returned 429; you are flooding the server"));
     }
 
     if (res.statusCode !== 200) {
-      return callback(new Error("Can't stage user: server status " + res.statusCode));
+      return callback(new Error("stage_user returned status " + res.statusCode));
     }
 
     return callback(null);
@@ -333,8 +333,8 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
     if (err) return callback(err);
     try {
       context = JSON.parse(data.context);
-    } catch (x) {
-      return callback("Bad context field for " + email + ": " +err);
+    } catch (err) {
+      return callback(err);
     }
 
     logEvent("POST /wsapi/cert_key", context.email);
@@ -377,7 +377,7 @@ var cancelAccount = function cancelAccount(context, callback) {
     ephemeral: true
   }, function(err, res) {
     if (err || res.statusCode !== 200) {
-      return callback("ERROR: cancelAccount: authenticateUser: server code " + res.statusCode);
+      return callback(new Error("authenticate_user returned code " + res.statusCode));
     }
 
     // Get the new authentication cookie and save it in our context
@@ -385,7 +385,7 @@ var cancelAccount = function cancelAccount(context, callback) {
 
     if (!body.success || !res.headers['set-cookie']) {
       // maybe user doesn't exist etc.
-      return callback("User not found");
+      return callback(new Error("authenticate_user failed.  User may not exist?"));
     }
 
     var set_cookie = res.headers['set-cookie'][0].split("=");
@@ -399,10 +399,10 @@ var cancelAccount = function cancelAccount(context, callback) {
       pass: context.pass
     }, function(err, res) {
       if (err) {
-        return callback("ERROR: cancelAccount: " + err);
+        return callback(err);
       }
       if (res.statusCode !== 200) {
-        return callback("ERROR: cancelAccount: server returned status " + res.statusCode);
+        return callback(new Error("cancel_account returned status " + res.statusCode));
       }
       console.log("Account canceled: " + context.email);
       return callback(null);
