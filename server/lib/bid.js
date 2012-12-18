@@ -226,6 +226,12 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
       ephemeral: true
     }, function(err, res) {
       logEvent("/wsapi/authenticate_user returned " + res.statusCode, email);
+      if (err) {
+        err = err.toString();
+        logEvent("ERROR: " + err, email);
+        return callback("ERROR: authenticateUser: " + err);
+      }
+
       if (res.statusCode !== 200) {
         return callback("ERROR: authenticateUser: server returned " + res.statusCode);
       }
@@ -376,7 +382,13 @@ var cancelAccount = function cancelAccount(context, callback) {
     pass: context.pass,
     ephemeral: true
   }, function(err, res) {
-    if (err || res.statusCode !== 200) {
+    if (err) {
+      err = err.toString();
+      logEvent("ERROR: " + err, email);
+      return callback("ERROR: cancelAccount: authenticateUser: " + err);
+    }
+
+    if (res.statusCode !== 200) {
       return callback("ERROR: cancelAccount: authenticateUser: server code " + res.statusCode);
     }
 
