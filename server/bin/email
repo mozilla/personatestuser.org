@@ -2,7 +2,7 @@
 /* -*- Mode: js2; js2-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 var smtp = require('smtp-protocol'),
-   redis = require("redis"),
+   redis = require("../lib/redis"),
    logEvent = require("../lib/events").logEvent,
    MailParser = require("mailparser").MailParser;
 
