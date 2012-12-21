@@ -30,7 +30,7 @@ function request(type, config, url, context, data, callback) {
       return callback(new Error(url + " returned 429; you are flooding the server"));
     }
     else if (res.statusCode !== 200) {
-      return callback(new Error("cancel_account returned status " + res.statusCode));
+      return callback(new Error(url + " returned status " + res.statusCode));
     }
 
     callback(null, res);
