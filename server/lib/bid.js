@@ -10,6 +10,41 @@ const util = require('util'),
       logEvent = require('./events').logEvent,
       db = redis.createClient();
 
+function request(type, config, url, context, data, callback) {
+  logEvent(type.toUpperCase() + ' ' + url, context.email);
+
+  wsapi[type](config, url, context, data, function(err, res) {
+    if (err) {
+      logEvent(err.toString(), context.email);
+      return callback(err);
+    }
+
+    if (!res) {
+      return callback(new Error(url + " did not return a response"));
+    }
+
+    logEvent(url + " returned " + res.statusCode, context.email);
+
+    if (res.statusCode === 429) {
+      // too many requests!
+      return callback(new Error(url + " returned 429; you are flooding the server"));
+    }
+    else if (res.statusCode !== 200) {
+      return callback(new Error("cancel_account returned status " + res.statusCode));
+    }
+
+    callback(null, res);
+  });
+}
+
+function post(config, url, context, data, callback) {
+  request('post', config, url, context, data, callback);
+}
+
+function get(config, url, context, data, callback) {
+  request('get', config, url, context, data, callback);
+}
+
 /**
  * The EmailVerifier sits and waits for asynchronous verification emails
  * to show up in redis, where the mail daemon will push them on
@@ -44,20 +79,11 @@ var EmailVerifier = function EmailVerifier() {
       browserid: userData.browserid,
       verifier: userData.verifier
     };
-    logEvent('POST /wsapi/complete_user_creation', userData.email);
-    wsapi.post(config, '/wsapi/complete_user_creation', {}, {
+    post(config, '/wsapi/complete_user_creation', userData, {
       token: userData.token,
       pass: userData.pass
     }, function(err, res) {
-      logEvent("/wsapi/complete_user_creation returned " + res.statusCode, userData.email);
-      if (err) {
-        logEvent(err.toString(), userData.email);
-        return callback(err);
-      }
-
-      if (res.statusCode !== 200) {
-        return callback(new Error("complete_user_creation returned code " + res.statusCode));
-      }
+      if (err) return callback(err);
 
       self._stagedEmailBecomesLive(userData, callback);
     });
@@ -149,22 +175,8 @@ util.inherits(EmailVerifier, events.EventEmitter);
 var getSessionContext = function getSessionContext(config, context, callback) {
   // Get a session_context
   // Modify @context in place with results
-  logEvent('GET /wsapi/session_context', context.email);
-
-  wsapi.get(config, '/wsapi/session_context', context, {
-  }, function(err, res) {
-    if (err) {
-      logEvent(err.toString(), context.email);
-      return callback(err);
-    }
-
-    if (res && res.statusCode) {
-      logEvent("/wsapi/session_context returned " + res.statusCode, context.email);
-    }
-
-    if (res.statusCode !== 200) {
-      return callback(new Error("Can't get session context: server status " + res.statusCode));
-    }
+  get(config, '/wsapi/session_context', context, {}, function(err, res) {
+    if (err) return callback(err);
 
     // body of the response is a JSON string like
     //
@@ -193,20 +205,10 @@ var getSessionContext = function getSessionContext(config, context, callback) {
 var _getAddressInfo = function _getAddressInfo(config, context, callback) {
   // I don't know if we care about the address info ...
   // Modify @context in place
-  logEvent('GET /wsapi/address_info', context.email);
-
-  wsapi.get(config, '/wsapi/address_info', context, {
+  get(config, '/wsapi/address_info', context, {
     email: context.email
   }, function(err, res) {
-    logEvent("/wsapi/address_info returned " + res.statusCode, context.email);
-
-    if (err) {
-      logEvent(err.toString(), context.email);
-      return callback(err);
-    }
-    if (res.statusCode !== 200) {
-      return callback(new Error("Can't get address info: server status " + res.statusCode));
-    }
+    if (err) return callback(err);
 
     context.address_info = JSON.parse(res.body);
 
@@ -218,23 +220,12 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
   redis.createClient().hget('ptu:email:'+email, 'context', function(err, data) {
     var context = JSON.parse(data);
 
-    logEvent('POST /wsapi/authenticate_user', email);
-
-    wsapi.post(config, '/wsapi/authenticate_user', context, {
+    post(config, '/wsapi/authenticate_user', context, {
       email: email,
       pass: pass,
       ephemeral: true
     }, function(err, res) {
-      logEvent("/wsapi/authenticate_user returned " + res.statusCode, email);
-      if (err) {
-        err = err.toString();
-        logEvent("ERROR: " + err, email);
-        return callback("ERROR: authenticateUser: " + err);
-      }
-
-      if (res.statusCode !== 200) {
-        return callback(new Error("authenticate_user returned " + res.statusCode));
-      }
+      if (err) return callback(err);
 
       var body = JSON.parse(res.body);
       if (body.success !== true) {
@@ -259,37 +250,13 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
 };
 
 var stageUser = function stageUser(config, context, callback) {
-  logEvent("POST /wsapi/stage_user", context.email);
-
-  wsapi.post(config, '/wsapi/stage_user', context, {
+  post(config, '/wsapi/stage_user', context, {
     csrf: context.session.csrf_token,
     email: context.email,
     pass: context.pass,
     site: context.site
   }, function(err, res) {
-    logEvent("/wsapi/stage_user returned " + res.statusCode, context.email);
-    if (err) {
-      logEvent("ERROR: " + err, context.email);
-      return callback(err);
-    };
-
-    if (!res) {
-      return callback(new Error("stage_user did not return a response"));
-    }
-
-    if (res.statusCode !== 200) {
-      // log any non-200 response
-      console.log("ERROR: stageUser: err=" + err + ", server code=" + res.statusCode);
-    }
-
-    if (res.statusCode === 429) {
-      // too many requests!
-      return callback(new Error("stage_user returned 429; you are flooding the server"));
-    }
-
-    if (res.statusCode !== 200) {
-      return callback(new Error("stage_user returned status " + res.statusCode));
-    }
+    if (err) return callback(err);
 
     return callback(null);
   });
@@ -313,6 +280,8 @@ var createUser = function createUser(config, email, pass, callback) {
 
       stageUser(config, context, function(err) {
         if (err) return callback(err);
+
+        console.log("user staged");
 
         // Store the session for this email, so we can
         // continue our conversation with the server later
@@ -343,18 +312,13 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
       return callback(err);
     }
 
-    logEvent("POST /wsapi/cert_key", context.email);
-
-    wsapi.post(config, '/wsapi/cert_key', context, {
+    post(config, '/wsapi/cert_key', context, {
       email: email,
       pubkey: pubkey.serialize(),
       ephemeral: false
     }, function(err, res) {
-      logEvent("/wsapi/cert_key returned " + res.statusCode, context.email);
-      if (err) {
-        logEvent(err.toString(), context.email);
-        return callback(err);
-      }
+      if (err) return callback(err);
+
       return callback(null, res);
     });
   });
@@ -377,20 +341,12 @@ var cancelAccount = function cancelAccount(context, callback) {
     browserid: context.browserid,
     verifier: context.verifier
   };
-  wsapi.post(config, '/wsapi/authenticate_user', context, {
+  post(config, '/wsapi/authenticate_user', context, {
     email: context.email,
     pass: context.pass,
     ephemeral: true
   }, function(err, res) {
-    if (err) {
-      err = err.toString();
-      logEvent("ERROR: " + err, email);
-      return callback(new Error("ERROR: cancelAccount: authenticateUser: " + err));
-    }
-
-    if (res.statusCode !== 200) {
-      return callback(new Error("ERROR: cancelAccount: authenticateUser: server code " + res.statusCode));
-    }
+    if (err) return callback(err);
 
     // Get the new authentication cookie and save it in our context
     var body = JSON.parse(res.body);
@@ -406,16 +362,12 @@ var cancelAccount = function cancelAccount(context, callback) {
     context.cookieJar = cookieJar;
 
     // Now cancel the account
-    wsapi.post(config, '/wsapi/account_cancel', context, {
+    post(config, '/wsapi/account_cancel', context, {
       email: context.email,
       pass: context.pass
     }, function(err, res) {
-      if (err) {
-        return callback(err);
-      }
-      if (res.statusCode !== 200) {
-        return callback(new Error("cancel_account returned status " + res.statusCode));
-      }
+      if (err) return callback(err);
+
       console.log("Account canceled: " + context.email);
       return callback(null);
     });
