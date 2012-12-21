@@ -251,7 +251,6 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
 
 var stageUser = function stageUser(config, context, callback) {
   post(config, '/wsapi/stage_user', context, {
-    csrf: context.session.csrf_token,
     email: context.email,
     pass: context.pass,
     site: context.site
@@ -272,28 +271,24 @@ var createUser = function createUser(config, email, pass, callback) {
 
   logEvent("Create user", context.email);
 
-  getSessionContext(config, context, function(err) {
+  _getAddressInfo(config, context, function(err) {
     if (err) return callback(err);
 
-    _getAddressInfo(config, context, function(err) {
+    stageUser(config, context, function(err) {
       if (err) return callback(err);
 
-      stageUser(config, context, function(err) {
-        if (err) return callback(err);
+      console.log("user staged");
 
-        console.log("user staged");
+      // Store the session for this email, so we can
+      // continue our conversation with the server later
+      // to get a cert.
 
-        // Store the session for this email, so we can
-        // continue our conversation with the server later
-        // to get a cert.
-
-        redis.createClient().hset('ptu:email:'+email, 'context', JSON.stringify(context), function(err) {
-          // Now we wait for an email to return from browserid.
-          // The email will be received by bin/email, which will
-          // push the email address and token pair into a redis
-          // queue.
-          return callback(err);
-        });
+      redis.createClient().hset('ptu:email:'+email, 'context', JSON.stringify(context), function(err) {
+        // Now we wait for an email to return from browserid.
+        // The email will be received by bin/email, which will
+        // push the email address and token pair into a redis
+        // queue.
+        return callback(err);
       });
     });
   });
