@@ -4,7 +4,7 @@
 
 const util = require('util'),
       events = require('events'),
-      redis = require('redis'),
+      redis = require('./redis'),
       redisConf = require('./config'),
       wsapi = require('./wsapi_client'),
       logEvent = require('./events').logEvent,
