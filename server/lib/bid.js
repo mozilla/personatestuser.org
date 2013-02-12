@@ -7,8 +7,7 @@ const util = require('util'),
       redis = require('./redis'),
       redisConf = require('./config'),
       wsapi = require('./wsapi_client'),
-      logEvent = require('./events').logEvent,
-      db = redis.createClient();
+      logEvent = require('./events').logEvent;
 
 function request(type, config, url, context, data, callback) {
   logEvent(type.toUpperCase() + ' ' + url, context.email);
@@ -30,13 +29,6 @@ function request(type, config, url, context, data, callback) {
       return callback(new Error(url + " returned 429; you are flooding the server"));
     }
     else if (res.statusCode !== 200) {
-
-      console.log(url,
-          "\nconfig=", JSON.stringify(config, null, 2),
-          "\ncontext=", JSON.stringify(context, null, 2),
-          "\ndata=", JSON.stringify(data, null, 2),
-          "\nres.statusCode=", res.statusCode,
-          "\nres.body=", JSON.stringify(res.body, null, 2));
 
       return callback(new Error(url + " returned status " + res.statusCode));
     }
@@ -71,10 +63,12 @@ var EmailVerifier = function EmailVerifier() {
   this._stagedEmailBecomesLive = function _stagedEmailBecomesLive (userData, callback) {
     var email = userData.email;
     var expires = userData.expires;
-    redis.createClient().multi()
+    var client = redis.createClient();
+    client.multi()
       .zadd('ptu:emails:valid', expires, email)
       .zrem('ptu:emails:staging', email)
       .exec(function(err, results) {
+        client.quit();
         if (err) return callback(err);
         console.log("Email now live: " + email + "; expires: " + expires);
         return callback(null);
@@ -103,7 +97,9 @@ var EmailVerifier = function EmailVerifier() {
    * provider.
    */
   this._startCancelingExpiredEmails = function _startCancelingExpiredEmails() {
-    redis.createClient().blpop('ptu:expired', 0, function(err, data) {
+    var client = redis.createClient();
+    client.blpop('ptu:expired', 0, function(err, data) {
+      client.quit();
       // data is a tuple like [qname, context]
       try {
         var context = JSON.parse(data[1]);
@@ -122,7 +118,9 @@ var EmailVerifier = function EmailVerifier() {
   };
 
   this._startVerifyingEmails = function _startVerifyingEmails() {
-    redis.createClient().blpop('ptu:mailq', 0, function(err, data) {
+    var client = redis.createClient();
+    client.blpop('ptu:mailq', 0, function(err, data) {
+      client.quit();
       // data is a tuple like [qname, data]
       try {
         data = JSON.parse(data[1]);
@@ -144,32 +142,34 @@ var EmailVerifier = function EmailVerifier() {
 
       // Stash the token, which is necessary to complete the bid
       // verification process, and then get all the data on this user
-	  var multi = redis.createClient().multi();
-      multi.hmset('ptu:email:'+email, 'token', token, 'headers', JSON.stringify(headers));
-      multi.hgetall('ptu:email:'+email);
-      multi.exec(function(err, results) {
-        if (err || results.length < 2) {
-          console.log("couldn't store token and retrieve user data");
-          self._startVerifyingEmails();
-          return;
-        }
-        var userData = results[1];
-
-        // maybe complete user creation
-        if (userData.do_verify === 'yes') {
-          self.completeUserCreation(userData, function(err) {
-            if (err) {
-              self.emit('error', err);
-            } else {
-              self.emit('user-ready', email, userData);
-            }
+      client = redis.createClient();
+      client.multi()
+        .hmset('ptu:email:'+email, 'token', token, 'headers', JSON.stringify(headers))
+        .hgetall('ptu:email:'+email)
+        .exec(function(err, results) {
+          client.quit();
+          if (err || results.length < 2) {
+            console.log("couldn't store token and retrieve user data");
             self._startVerifyingEmails();
-          });
-        } else {
-          self.emit('user-ready', email, userData);
-          self._startVerifyingEmails();
-        }
-      });
+            return;
+          }
+          var userData = results[1];
+
+          // maybe complete user creation
+          if (userData.do_verify === 'yes') {
+            self.completeUserCreation(userData, function(err) {
+              if (err) {
+                self.emit('error', err);
+              } else {
+                self.emit('user-ready', email, userData);
+              }
+              self._startVerifyingEmails();
+            });
+          } else {
+            self.emit('user-ready', email, userData);
+            self._startVerifyingEmails();
+          }
+        });
     });
   };
 
@@ -225,7 +225,9 @@ var _getAddressInfo = function _getAddressInfo(config, context, callback) {
 };
 
 var authenticateUser = function authenticateUser(config, email, pass, callback) {
-  redis.createClient().hget('ptu:email:'+email, 'context', function(err, data) {
+  var client = redis.createClient();
+  client.hget('ptu:email:'+email, 'context', function(err, data) {
+    client.quit();
     var context = JSON.parse(data);
 
     post(config, '/wsapi/authenticate_user', context, {
@@ -246,12 +248,14 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
         var key = 'ptu:email:'+context.email;
         cookieJar[set_cookie[0]] = set_cookie[1];
         context.cookieJar = cookieJar;
-        var multi = redis.createClient().multi();
-        multi.hset(key, 'userid', body.userid);
-        multi.hset(key, 'context', JSON.stringify(context));
-        multi.exec(function(err, result) {
-          return callback(err);
-        });
+        client = redis.createClient();
+        client.multi()
+          .hset(key, 'userid', body.userid)
+          .hset(key, 'context', JSON.stringify(context))
+          .exec(function(err, result) {
+            client.quit();
+            return callback(err);
+          });
       }
     });
   });
@@ -291,7 +295,9 @@ var createUser = function createUser(config, email, pass, callback) {
       // continue our conversation with the server later
       // to get a cert.
 
-      redis.createClient().hset('ptu:email:'+email, 'context', JSON.stringify(context), function(err) {
+      var client = redis.createClient();
+      client.hset('ptu:email:'+email, 'context', JSON.stringify(context), function(err) {
+        client.quit();
         // Now we wait for an email to return from browserid.
         // The email will be received by bin/email, which will
         // push the email address and token pair into a redis
@@ -307,7 +313,9 @@ var certifyKey = function certifyKey(config, email, pubkey, callback) {
 
   logEvent("Certify key", email.email);
 
-  redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
+  var client = redis.createClient();
+  client.hgetall('ptu:email:'+email, function(err, data) {
+    client.quit();
     if (err) return callback(err);
     try {
       context = JSON.parse(data.context);
@@ -332,12 +340,15 @@ var cancelAccount = function cancelAccount(context, callback) {
 
   // Either way, remove the user from the redis db.
   if (context.email) {
-    redis.createClient().multi()
+    var client = redis.createClient();
+    client.multi()
       .del('ptu:email:'+context.email)
       .del('ptu:events:'+context.email)
       .zrem('ptu:emails:staging', context.email)
       .zrem('ptu:emails:valid', context.email)
-      .exec();
+      .exec(function(err, result) {
+        client.quit();
+      });
   }
 
   var config = {
