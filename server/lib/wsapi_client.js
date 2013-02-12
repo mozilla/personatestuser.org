@@ -30,6 +30,11 @@ function extractCookies(ctx, res) {
       var m = /^([^;]+)(?:;.*)$/.exec(cookie);
       if (m) {
         var x = m[1].split('=');
+        if (ctx.cookieJar[x[0]]) {
+          console.log("overwriting cookie: ", x[0],
+              "\nold =", ctx.cookieJar[x[0]],
+              "\nnew =", x[1]);
+        }
         ctx.cookieJar[x[0]] = x[1];
       }
     });
@@ -60,6 +65,7 @@ exports.get = function(cfg, path, context, getArgs, cb) {
     path += "?" + querystring.stringify(getArgs);
   }
 
+  console.log("GET: " + path);
   request({
     uri: cfg.browserid + path,
     headers: headers,
@@ -84,6 +90,8 @@ function withCSRF(cfg, context, cb) {
     try {
       if (res.statusCode !== 200) throw 'http error';
       context.session = JSON.parse(res.body);
+      console.log("new session context: " + JSON.stringify(context, null, 2));
+
       context.sessionStartedAt = new Date().getTime();
       return cb(null, context.session.csrf_token);
     } catch(err) {
@@ -108,6 +116,7 @@ exports.post = function(cfg, path, context, postArgs, cb) {
     var body = JSON.stringify(postArgs);
     headers['Content-Length'] = body.length;
 
+    console.log("POST: " + path);
     var req = request({
       uri: cfg.browserid + path,
       headers: headers,

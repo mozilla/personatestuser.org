@@ -29,6 +29,12 @@ function request(type, config, url, context, data, callback) {
       return callback(new Error(url + " returned 429; you are flooding the server"));
     }
     else if (res.statusCode !== 200) {
+      console.log(url,
+          "\nconfig=", JSON.stringify(config, null, 2),
+          "\ncontext=", JSON.stringify(context, null, 2),
+          "\ndata=", JSON.stringify(data, null, 2),
+          "\nres.statusCode=", res.statusCode,
+          "\nres.body=", JSON.stringify(res.body, null, 2));
 
       return callback(new Error(url + " returned status " + res.statusCode));
     }
@@ -283,8 +289,8 @@ var createUser = function createUser(config, email, pass, callback) {
 
   logEvent("Create user", context.email);
 
-  _getAddressInfo(config, context, function(err) {
-    if (err) return callback(err);
+  /*_getAddressInfo(config, context, function(err) {*/
+    /*if (err) return callback(err);*/
 
     stageUser(config, context, function(err) {
       if (err) return callback(err);
@@ -305,7 +311,7 @@ var createUser = function createUser(config, email, pass, callback) {
         return callback(err);
       });
     });
-  });
+  /*});*/
 };
 
 var certifyKey = function certifyKey(config, email, pubkey, callback) {

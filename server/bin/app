@@ -155,9 +155,9 @@ app.get('/email/:env?', verifyEnv, jsonOut, function getVerifiedEmail(req, res) 
 
   api.getVerifiedEmail(params, function(err, data) {
     if (err) {
-      return errorResponse("Cannot get email", res, err);
+      return errorResponse("Cannot get email: " + String(err), res, err);
     }
-    logEvent(startEvent, data.email, start);
+    logEvent(startEvent, JSON.stringify(data, null, 2), start);
     return dataWithEvents(res, data, start);
   });
 });
