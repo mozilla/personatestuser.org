@@ -30,6 +30,14 @@ function request(type, config, url, context, data, callback) {
       return callback(new Error(url + " returned 429; you are flooding the server"));
     }
     else if (res.statusCode !== 200) {
+
+      console.log(url,
+          "\nconfig=", JSON.stringify(config, null, 2),
+          "\ncontext=", JSON.stringify(context, null, 2),
+          "\ndata=", JSON.stringify(data, null, 2),
+          "\nres.statusCode=", res.statusCode,
+          "\nres.body=", JSON.stringify(res.body, null, 2));
+
       return callback(new Error(url + " returned status " + res.statusCode));
     }
 
