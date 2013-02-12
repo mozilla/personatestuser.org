@@ -10,9 +10,26 @@
  */
 
 const
-request = require('request'),
+req_api = require('request'),
 url = require('url'),
 querystring = require('querystring');
+
+var reqNum = 0;
+function request(config, done) {
+  console.log("request:", reqNum, JSON.stringify(config, null, 2));
+
+  (function(req_num) {
+    req_api(config, function(err, res, body) {
+      console.log("\nresponse for", req_num,
+                  "\nresponseCode:", res.statusCode,
+                  "\nresponse headers: ", JSON.stringify(res.headers, null, 2),
+                  "\nbody: " , JSON.stringify(body, null, 2));
+
+      done(err, res, body);
+    });
+  }(reqNum));
+  reqNum++;
+};
 
 function injectCookies(ctx, headers) {
   if (ctx.cookieJar && Object.keys(ctx.cookieJar).length) {
@@ -30,11 +47,6 @@ function extractCookies(ctx, res) {
       var m = /^([^;]+)(?:;.*)$/.exec(cookie);
       if (m) {
         var x = m[1].split('=');
-        if (ctx.cookieJar[x[0]]) {
-          console.log("overwriting cookie: ", x[0],
-              "\nold =", ctx.cookieJar[x[0]],
-              "\nnew =", x[1]);
-        }
         ctx.cookieJar[x[0]] = x[1];
       }
     });
@@ -65,8 +77,12 @@ exports.get = function(cfg, path, context, getArgs, cb) {
     path += "?" + querystring.stringify(getArgs);
   }
 
-  console.log("GET: " + path);
+  /*
+  console.log("GET: " + path,
+              "\nCookies: " + JSON.stringify(headers.Cookie, null, 2));
+  */
   request({
+    context: context,
     uri: cfg.browserid + path,
     headers: headers,
     followRedirect: true
@@ -102,6 +118,11 @@ function withCSRF(cfg, context, cb) {
 }
 
 exports.post = function(cfg, path, context, postArgs, cb) {
+  /*
+  console.log("PRE CSRF POST: " + path,
+            "\nContext: " + JSON.stringify(context, null, 2),
+            "\nData: " + JSON.stringify(postArgs, null, 2));
+*/
   withCSRF(cfg, context, function(err, csrf) {
     if (err) return cb(err);
 
@@ -116,8 +137,14 @@ exports.post = function(cfg, path, context, postArgs, cb) {
     var body = JSON.stringify(postArgs);
     headers['Content-Length'] = body.length;
 
-    console.log("POST: " + path);
+    /*
+    console.log("POST: " + path,
+              "\nContext: " + JSON.stringify(context, null, 2),
+              "\nData: " + JSON.stringify(postArgs, null, 2),
+              "\nCookies: " + JSON.stringify(headers.Cookie, null, 2));
+*/
     var req = request({
+      context: context,
       uri: cfg.browserid + path,
       headers: headers,
       method: "POST",
