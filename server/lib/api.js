@@ -61,7 +61,9 @@ var API = module.exports = function API(config, onready) {
     var email;
 
     // asynchronously cull the outdated emails in valid and staging
-    redis.createClient().zrangebyscore('ptu:emails:valid', '-inf', age, function(err, results) {
+    var client = redis.createClient();
+    client.zrangebyscore('ptu:emails:valid', '-inf', age, function(err, results) {
+      client.quit();
       if (err) {
         console.log("ERROR: _cullOldEmails, looking for valid emails:", err);
         return callback(err);
@@ -70,7 +72,9 @@ var API = module.exports = function API(config, onready) {
         toCull[email] = true;
       });
 
-      redis.createClient().zrangebyscore('ptu:emails:staging', '-inf', age, function(err, results) {
+      client = redis.createClient();
+      client.zrangebyscore('ptu:emails:staging', '-inf', age, function(err, results) {
+        client.quit();
         if (err) {
           console.log("ERROR: _cullOldEmails, looking for staging emails:", err);
           return callback(err);
@@ -86,17 +90,20 @@ var API = module.exports = function API(config, onready) {
 
         // we need to get the env for each email so we know how to
         // delete the account
-        var multi = redis.createClient().multi();
+        client = redis.createClient();
+        var multi = client.multi();
         Object.keys(toCull).forEach(function(email) {
           console.log("Will cull expired email: " + email);
           multi.hmget('ptu:email:'+email, 'email', 'pass', 'browserid');
         });
         multi.exec(function(err, tuples) {
+          client.quit();
           if (err) {
             console.log("ERROR: redis multi:", err);
             return callback(err);
           }
-          var multi = redis.createClient().multi();
+          client = redis.createClient();
+          multi = client.multi();
           tuples.forEach(function(tuple) {
             // Push the email to be culled and its domain onto the expired queue.
             // The bid module will take it from there and tell the IdP to delete
@@ -113,7 +120,10 @@ var API = module.exports = function API(config, onready) {
             // Which indicates that these functions belong back in the bid module ...
             multi.rpush('ptu:expired', JSON.stringify(context));
           });
-          multi.exec(callback);
+          multi.exec(function(err, result) {
+            client.quit();
+            callback(err, result);
+          });
         });
       });
     });
@@ -179,15 +189,17 @@ var API = module.exports = function API(config, onready) {
     if (! (params.email && params.pass && params.browserid && params.verifier && params.expires)) {
       return callback("Missing required params for stageEmail");
     }
-    var multi = redis.createClient().multi();
-    multi.zadd('ptu:emails:staging', params.expires, params.email);
-    multi.hmset('ptu:email:'+params.email, params);
-    multi.exec(function(err) {
-      if (err) {
-        return callback(err);
-      }
-      return callback(null, params);
-    });
+    var client = redis.createClient();
+    client.multi()
+      .zadd('ptu:emails:staging', params.expires, params.email)
+      .hmset('ptu:email:'+params.email, params)
+      .exec(function(err) {
+        client.quit();
+        if (err) {
+          return callback(err);
+        }
+        return callback(null, params);
+      });
   };
 
   /**
@@ -233,7 +245,9 @@ var API = module.exports = function API(config, onready) {
     }
 
     // Check whether this email exists already
-    redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
+    var client = redis.createClient();
+    client.hgetall('ptu:email:'+email, function(err, data) {
+      client.quit();
       if (err) {
         console.log("ERROR: _createNewEmail: redis hgetall:", err);
         return callback(err);
@@ -244,7 +258,9 @@ var API = module.exports = function API(config, onready) {
       else if (data && data.pass === pass) {
         logEvent("Re-use existing email account", email);
         var expires = unixTime() + ONE_HOUR_IN_SECONDS;
-        redis.createClient().hset('ptu:email:'+email, 'expires', expires, function(err) {
+        client = redis.createClient();
+        client.hset('ptu:email:'+email, 'expires', expires, function(err) {
+          client.quit();
           if (err) {
             console.log("ERROR: _createNewEmail: redis hset:", err);
             return callback(err);
@@ -297,7 +313,9 @@ var API = module.exports = function API(config, onready) {
     if (!params.browserid) return callback(new Error("browserid url param required for custom env"));
     if (!params.verifier) return callback(new Error("verifier url param required for custom env"));
 
-    redis.createClient().incr('ptu:nextval', function(err, val) {
+    var client = redis.createClient();
+    client.incr('ptu:nextval', function(err, val) {
+      client.quit();
       if (err) {
         console.log("ERROR: _generateNewEmail: redis:", err);
         return callback(err);
@@ -358,7 +376,9 @@ var API = module.exports = function API(config, onready) {
 
     getEmailFunc(params, function(err, data) {
       if (err) return callback(err);
-      redis.createClient().hset('ptu:email:'+data.email, 'do_verify', do_verify, function(err) {
+      var client = redis.createClient();
+      client.hset('ptu:email:'+data.email, 'do_verify', do_verify, function(err) {
+        client.quit();
         if (err) return callback(err);
         bid.createUser(params, data.email, data.pass, function(err) {
           if (err) {
@@ -383,10 +403,12 @@ var API = module.exports = function API(config, onready) {
     }
     jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
       logEvent("Keypair generated", params.email);
-      redis.createClient().hmset('ptu:email:'+params.email, {
+      var client = redis.createClient();
+      client.hmset('ptu:email:'+params.email, {
         publicKey: kp.publicKey.serialize(),
         secretKey: kp.secretKey.serialize()
       }, function(err) {
+        client.quit();
         return callback(err, kp);
       });
     });
@@ -460,7 +482,9 @@ var API = module.exports = function API(config, onready) {
 
   this.getUserData = function getEmailData(email, pass, callback) {
     // get the email data if the caller knows the right password
-    redis.createClient().hgetall('ptu:email:'+email, function(err, data) {
+    var client = redis.createClient();
+    client.hgetall('ptu:email:'+email, function(err, data) {
+      client.quit();
       if (err) {
         console.log("ERROR: getUserData: redis hgetall:", err);
         return callback(err);
