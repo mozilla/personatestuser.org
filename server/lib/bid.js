@@ -181,33 +181,7 @@ var EmailVerifier = function EmailVerifier() {
 util.inherits(EmailVerifier, events.EventEmitter);
 
 var getSessionContext = function getSessionContext(config, context, callback) {
-  // Get a session_context
-  // Modify @context in place with results
-  get(config, '/wsapi/session_context', context, {}, function(err, res) {
-    if (err) return callback(err);
-
-    // body of the response is a JSON string like
-    //
-    // {"csrf_token":"TVEdXvrgYfRG7k004jFmQQ==",
-    //  "server_time":1337820896110,
-    //  "authenticated":false,
-    //  "domain_key_creation_time":1322071714847,
-    //  "random_seed":"K3nFtBMsZwG0J0pfC+U3qxHSl3x21tD6QhKYd1si/0U=",
-    //  "data_sample_rate":0}
-    //
-    //  Store this in the context object.  Note that the token is called
-    //  csrf_token, not csrf
-
-    var session = JSON.parse(res.body);
-    if (!context.session) {
-      context.session = {};
-    }
-    for (var key in session) {
-      context.session[key] = session[key];
-    }
-
-    return callback(null, res);
-  });
+  wsapi.getSessionContext(config, context, callback);
 };
 
 var _getAddressInfo = function _getAddressInfo(config, context, callback) {
@@ -243,11 +217,7 @@ var authenticateUser = function authenticateUser(config, email, pass, callback) 
         return callback(new Error("Authentication failed"));
       } else {
         // Save our updated tokens
-        var set_cookie = res.headers['set-cookie'][0].split("=");
-        var cookieJar = {};
         var key = 'ptu:email:'+context.email;
-        cookieJar[set_cookie[0]] = set_cookie[1];
-        context.cookieJar = cookieJar;
         client = redis.createClient();
         client.multi()
           .hset(key, 'userid', body.userid)
@@ -369,11 +339,6 @@ var cancelAccount = function cancelAccount(context, callback) {
       // maybe user doesn't exist etc.
       return callback(new Error("authenticate_user failed.  User may not exist?"));
     }
-
-    var set_cookie = res.headers['set-cookie'][0].split("=");
-    var cookieJar = {};
-    cookieJar[set_cookie[0]] = set_cookie[1];
-    context.cookieJar = cookieJar;
 
     // Now cancel the account
     post(config, '/wsapi/account_cancel', context, {

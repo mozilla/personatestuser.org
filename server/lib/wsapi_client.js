@@ -16,9 +16,13 @@ querystring = require('querystring');
 
 function injectCookies(ctx, headers) {
   if (ctx.cookieJar && Object.keys(ctx.cookieJar).length) {
-    headers['Cookie'] = "";
+    // use the lowercase "cookie" for this or else request overwrites the
+    // cookies with its own cookieJar
+    // See:
+    //     https://github.com/mikeal/request/issues/324
+    headers['cookie'] = "";
     for (var k in ctx.cookieJar) {
-      headers['Cookie'] += k + "=" + ctx.cookieJar[k];
+      headers['cookie'] += k + "=" + ctx.cookieJar[k];
     }
   }
 }
@@ -63,7 +67,8 @@ exports.get = function(cfg, path, context, getArgs, cb) {
   request({
     uri: cfg.browserid + path,
     headers: headers,
-    followRedirect: true
+    followRedirect: true,
+    jar: false
   }, function(err, res, body) {
     if (err) {
       console.log("ERROR: wsapi_client.get " + cfg.browserid+path + " -> " + err);
@@ -93,6 +98,8 @@ function withCSRF(cfg, context, cb) {
   });
 }
 
+exports.getSessionContext = withCSRF;
+
 exports.post = function(cfg, path, context, postArgs, cb) {
   withCSRF(cfg, context, function(err, csrf) {
     if (err) return cb(err);
@@ -113,7 +120,8 @@ exports.post = function(cfg, path, context, postArgs, cb) {
       headers: headers,
       method: "POST",
       followAllRedirects: true,
-      body: body
+      body: body,
+      jar: false
     }, function(err, res, body) {
       if (err) {
         console.log("ERROR: wsapi_client.post: " + err);
