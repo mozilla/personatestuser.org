@@ -194,8 +194,8 @@ app.get('/cancel/:email/:password', jsonOut, function cancelAccount(req, res) {
 });
 
 function checkMalformedAudience(audience, res) {
-  if (! /^https?:\/\//.test(audience)) {
-    return new Error("Audience must begin with protocol and be url encode, like so: https%3A%2F%2F" + audience);
+  if (! /^[a-z]+?:\/\//.test(audience)) {
+    return new Error("Audience must begin with protocol and be url encoded, like so: https%3A%2F%2F" + audience);
   }
   return null;
 }
