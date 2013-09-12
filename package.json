@@ -2,7 +2,21 @@
   "name": "personatestuser",
   "description": "A service that facilitates automated testing of sign-in with persona",
   "version": "0.1.0",
-
+  "author": {
+    "name" : "Mozilla",
+    "url" : "https://mozilla.org/"
+  },
+  "licenses" : [{
+    "type": "MPL 2.0",
+    "url": "https://mozilla.org/MPL/2.0/"
+  }],
+  "homepage": "http://personatestuser.org/",
+  "bugs": "https://github.com/pdehaan/personatestuser.org/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pdehaan/personatestuser.org"
+  },
+  "private": true,
   "dependencies": {
     "awsmang-connect": "0.0.2",
     "express": "2.5.9",
