@@ -112,3 +112,7 @@ been create for a certain env.
 
 You do not need to cancel accounts created with this tool.  Email
 accounts are automatically canceled with the IdP after one hour.
+
+## Deployment
+
+This codebase is currently (December 2014) deployed in the `mozilla` AWS account (`351644144250`) in the `us-east-1` region. This AWS account is managed by the Mozilla Cloud Services team. The DNS for this account is managed by AWS Route53, again in the `mozilla` AWS account. To access this deployed system run `ssh ec2-user@personatestuser.org`. This `ec2-user` has ssh keys pulled from the `identity-pubkeys` repo at the revision [2f02e7c6cb](https://github.com/mozilla/identity-pubkeys/tree/2f02e7c6cb206d62f61e5379c39f198909e46aa2).
