@@ -170,7 +170,7 @@ var API = module.exports = function API(config, onready) {
     var callback = self.emailCallbacks[email];
     if (typeof callback === 'function') {
       var msg = "Received return email " + email;
-      logEvent(msg, email);
+      /*logEvent(msg, email);*/
       self.emit('message', "Received " + email);
 
       // Call back with the user data, which at this point should
@@ -256,7 +256,7 @@ var API = module.exports = function API(config, onready) {
       // If the email does exist, and the caller knows the right password,
       // bump the expiration time and return the valid account data.
       else if (data && data.pass === pass) {
-        logEvent("Re-use existing email account", email);
+        /*logEvent("Re-use existing email account", email);*/
         var expires = unixTime() + ONE_HOUR_IN_SECONDS;
         client = redis.createClient();
         client.hset('ptu:email:'+email, 'expires', expires, function(err) {
@@ -277,7 +277,7 @@ var API = module.exports = function API(config, onready) {
 
       // Email does not exist.  Create it.
       else {
-        logEvent("Create new email account", email);
+        /*logEvent("Create new email account", email);*/
         var params = {
           email: email,
           pass: pass,
@@ -321,7 +321,7 @@ var API = module.exports = function API(config, onready) {
         return callback(err);
       }
       email = name + val + '@' + DEFAULT_DOMAIN;
-      logEvent("Generate new email account", email);
+      /*logEvent("Generate new email account", email);*/
       var data = {
         email: email,
         pass: pass,
@@ -356,7 +356,7 @@ var API = module.exports = function API(config, onready) {
       var still_there = self.emailCallbacks[email];
       if (typeof still_there === 'function') {
         var err = "Timed out after " + EMAIL_TIMEOUT + "ms awaiting return of email " + email;
-        logEvent(err, email);
+        /*logEvent(err, email);*/
         self.emit('error', err);
         callback(err);
         delete(self.emailCallbacks[email]);
@@ -397,12 +397,12 @@ var API = module.exports = function API(config, onready) {
    * redis along with the rest of the email's data.
    */
   this._generateKeypair = function genKeyPair(params, callback) {
-    logEvent("Generate keypair", params.email);
+    /*logEvent("Generate keypair", params.email);*/
     if (!params.email) {
       return callback(new Error("params missing required email"));
     }
     jwcrypto.generateKeypair({algorithm:ALGORITHM, keysize:KEYSIZE}, function(err, kp) {
-      logEvent("Keypair generated", params.email);
+      /*logEvent("Keypair generated", params.email);*/
       var client = redis.createClient();
       client.hmset('ptu:email:'+params.email, {
         publicKey: kp.publicKey.serialize(),
@@ -516,7 +516,7 @@ var API = module.exports = function API(config, onready) {
   };
 
   this.getAssertion = function getAssertion(userData, audience, callback) {
-    logEvent("Get assertion", userData.email);
+    /*logEvent("Get assertion", userData.email);*/
 
     var email = userData.email;
     var pass = userData.pass;
@@ -555,7 +555,7 @@ var API = module.exports = function API(config, onready) {
             kp.secretKey,
             function(err, assertion) {
               if (err) {
-                logEvent(err.toString(), userData.email);
+                /*logEvent(err.toString(), userData.email);*/
                 return self.callback(err);
               }
               var bundle = jwcrypto.cert.bundle([cert], assertion);

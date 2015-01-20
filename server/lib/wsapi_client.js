@@ -10,9 +10,26 @@
  */
 
 const
-request = require('request'),
+req_api = require('request'),
 url = require('url'),
 querystring = require('querystring');
+
+var reqNum = 0;
+function request(config, done) {
+  console.log("request:", reqNum, JSON.stringify(config, null, 2));
+
+  (function(req_num) {
+    req_api(config, function(err, res, body) {
+      console.log("\nresponse for", req_num,
+                  "\nresponseCode:", res.statusCode,
+                  "\nresponse headers: ", JSON.stringify(res.headers, null, 2),
+                  "\nbody: " , JSON.stringify(body, null, 2));
+
+      done(err, res, body);
+    });
+  }(reqNum));
+  reqNum++;
+};
 
 function injectCookies(ctx, headers) {
   if (ctx.cookieJar && Object.keys(ctx.cookieJar).length) {
@@ -64,7 +81,12 @@ exports.get = function(cfg, path, context, getArgs, cb) {
     path += "?" + querystring.stringify(getArgs);
   }
 
+  /*
+  console.log("GET: " + path,
+              "\nCookies: " + JSON.stringify(headers.Cookie, null, 2));
+  */
   request({
+    context: context,
     uri: cfg.browserid + path,
     headers: headers,
     followRedirect: true,
@@ -90,6 +112,8 @@ function withCSRF(cfg, context, cb) {
     try {
       if (res.statusCode !== 200) throw 'http error';
       context.session = JSON.parse(res.body);
+      console.log("new session context: " + JSON.stringify(context, null, 2));
+
       context.sessionStartedAt = new Date().getTime();
       return cb(null, context.session.csrf_token);
     } catch(err) {
@@ -102,6 +126,11 @@ function withCSRF(cfg, context, cb) {
 exports.getSessionContext = withCSRF;
 
 exports.post = function(cfg, path, context, postArgs, cb) {
+  /*
+  console.log("PRE CSRF POST: " + path,
+            "\nContext: " + JSON.stringify(context, null, 2),
+            "\nData: " + JSON.stringify(postArgs, null, 2));
+*/
   withCSRF(cfg, context, function(err, csrf) {
     if (err) return cb(err);
 
@@ -116,7 +145,14 @@ exports.post = function(cfg, path, context, postArgs, cb) {
     var body = JSON.stringify(postArgs);
     headers['Content-Length'] = body.length;
 
+    /*
+    console.log("POST: " + path,
+              "\nContext: " + JSON.stringify(context, null, 2),
+              "\nData: " + JSON.stringify(postArgs, null, 2),
+              "\nCookies: " + JSON.stringify(headers.Cookie, null, 2));
+*/
     var req = request({
+      context: context,
       uri: cfg.browserid + path,
       headers: headers,
       method: "POST",

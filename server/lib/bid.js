@@ -10,7 +10,7 @@ const util = require('util'),
       logEvent = require('./events').logEvent;
 
 function request(type, config, url, context, data, callback) {
-  logEvent(type.toUpperCase() + ' ' + url, context.email);
+  /*logEvent(type.toUpperCase() + ' ' + url, context.email);*/
 
   wsapi[type](config, url, context, data, function(err, res) {
     if (err) {
@@ -22,14 +22,21 @@ function request(type, config, url, context, data, callback) {
       return callback(new Error(url + " did not return a response"));
     }
 
-    logEvent(url + " returned " + res.statusCode, context.email);
+    /*logEvent(url + " returned " + res.statusCode, context.email);*/
 
     if (res.statusCode === 429) {
       // too many requests!
       return callback(new Error(url + " returned 429; you are flooding the server"));
     }
     else if (res.statusCode !== 200) {
-
+      /*
+      console.log(url,
+          "\nconfig=", JSON.stringify(config, null, 2),
+          "\ncontext=", JSON.stringify(context, null, 2),
+          "\ndata=", JSON.stringify(data, null, 2),
+          "\nres.statusCode=", res.statusCode,
+          "\nres.body=", JSON.stringify(res.body, null, 2));
+*/
       return callback(new Error(url + " returned status " + res.statusCode));
     }
 
@@ -70,7 +77,7 @@ var EmailVerifier = function EmailVerifier() {
       .exec(function(err, results) {
         client.quit();
         if (err) return callback(err);
-        console.log("Email now live: " + email + "; expires: " + expires);
+        /*console.log("Email now live: " + email + "; expires: " + expires);*/
         return callback(null);
       });
   };
@@ -251,15 +258,15 @@ var createUser = function createUser(config, email, pass, callback) {
     keys: {}
   };
 
-  logEvent("Create user", context.email);
+  /*logEvent("Create user", context.email);*/
 
-  _getAddressInfo(config, context, function(err) {
-    if (err) return callback(err);
+  /*_getAddressInfo(config, context, function(err) {*/
+    /*if (err) return callback(err);*/
 
     stageUser(config, context, function(err) {
       if (err) return callback(err);
 
-      console.log("user staged");
+      /*console.log("user staged");*/
 
       // Store the session for this email, so we can
       // continue our conversation with the server later
@@ -275,13 +282,13 @@ var createUser = function createUser(config, email, pass, callback) {
         return callback(err);
       });
     });
-  });
+  /*});*/
 };
 
 var certifyKey = function certifyKey(config, email, pubkey, callback) {
   var context = {};
 
-  logEvent("Certify key", email.email);
+  /*logEvent("Certify key", email.email);*/
 
   var client = redis.createClient();
   client.hgetall('ptu:email:'+email, function(err, data) {
